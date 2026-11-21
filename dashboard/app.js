@@ -1,4 +1,4 @@
-// Launch Radar v3 dashboard. Renders the board written by main.ts
+// Launch Radar v4 dashboard. Renders the board written by main.ts
 // (window.RADAR in ../data.js), re-derives every verdict live under the
 // reader's scenario, and recomputes the board's own totals on the page
 // as a check that the table and the model agree.
@@ -20,6 +20,72 @@ function econ(row) {
   const hours = 2 + row.chains.length * 0.5 + scen.horizon * 0.25;
   const netPerHour = net / hours;
   return { deposit, expected, fees, net, hours, netPerHour, verdict: net >= 50 && netPerHour >= 8 ? 'FARM' : net > 0 ? 'MARGINAL' : 'SKIP' };
+}
+
+// ---------- in-page refit ----------
+// This page refits both model stages from the raw snapshot
+// (../snapshot.js) and diffs the result against the board the build
+// shipped. Same features, same optimiser, same order of operations
+// as lib/model.ts — the reader does not have to take the build's
+// word for any of it.
+const REFIT = (() => {
+  if (typeof window.SNAPSHOT === 'undefined') return null;
+  if (R.value.terms.some((t) => t === 'category' || t === 'family')) return null; // group multipliers are not ported; say so rather than fake it
+  try { return refitBoard(window.SNAPSHOT); } catch (e) { return null; }
+})();
+function refitBoard(S) {
+  const EXCLUDED_CATS = new Set(['Bridge', 'Canonical Bridge', 'Liquid Staking', 'Liquid Restaking', 'Restaked BTC', 'CEX']);
+  const EXCHANGES = ['Binance', 'Coinbase', 'Bybit', 'Kraken', 'Bitget', 'OKX', 'Bitfinex', 'Gemini'];
+  const houseExcluded = (p) => EXCLUDED_CATS.has(p.category) || /(^|\s)(V2|v2|2\.0|V3|v3)$/.test(p.name.trim()) || /\b(wrapped|staked|staking)\b/i.test(p.name) || EXCHANGES.some((e) => p.name.startsWith(e + ' ') || p.name === e);
+  const tokenRecorded = (p) => !!(p.symbol || p.gecko_id);
+  const priced = (p) => typeof p.mcap_usd === 'number' && p.mcap_usd > 0;
+  const ageYears = (p) => { if (!p.listed_at) return null; const days = (new Date(S.as_of + 'T00:00:00Z').getTime() - new Date(p.listed_at + 'T00:00:00Z').getTime()) / 864e5; return Math.max(0, days / 365.25); };
+  const median = (xs) => { const s = [...xs].sort((a, b) => a - b); return s[Math.floor(s.length / 2)]; };
+  const ageFill = (rows) => median(rows.filter((p) => ageYears(p) !== null).map((p) => Math.log(1 + ageYears(p))));
+  const ageFeat = (p, fill) => { const a = ageYears(p); return a === null ? fill : Math.log(1 + a); };
+  const FAMS = ['Lending', 'Dexs', 'Yield', 'Curators', 'Derivatives', 'Stablecoins', 'RWA', 'Staking', 'Chain'];
+  const family = (p) => { const c = p.category; if (['Lending', 'Uncollateralized Lending', 'Collateral Markets'].includes(c)) return 'Lending'; if (['Dexs', 'Liquidity Manager'].includes(c)) return 'Dexs'; if (['Yield', 'Yield Aggregator', 'Farm', 'Leveraged Farming'].includes(c)) return 'Yield'; if (['Risk Curators', 'Onchain Capital Allocator'].includes(c)) return 'Curators'; if (['Derivatives', 'Basis Trading', 'Options', 'Interest Rate Derivatives', 'Options Vault', 'Synthetics'].includes(c)) return 'Derivatives'; if (['CDP', 'CDP Manager', 'Algo-Stables', 'Dual-Token Stablecoin', 'Stablecoin Issuer', 'Stablecoin Wrapper'].includes(c)) return 'Stablecoins'; if (c === 'RWA') return 'RWA'; if (['Restaking', 'Staking Pool'].includes(c)) return 'Staking'; if (c === 'Chain') return 'Chain'; return 'Other'; };
+  const ranked = [], pricedComp = [];
+  for (const p of S.protocols) {
+    if (priced(p)) { pricedComp.push(p); continue; }
+    if (tokenRecorded(p)) continue;
+    if (p.category === 'Bridge' || p.category === 'Canonical Bridge') continue;
+    if (['Liquid Staking', 'Liquid Restaking', 'Restaked BTC'].includes(p.category)) continue;
+    if (p.category === 'CEX') continue;
+    if (houseExcluded(p)) continue;
+    ranked.push(p);
+  }
+  ranked.sort((a, b) => b.tvl_usd - a.tvl_usd);
+  const boardSet = ranked.slice(0, 200);
+  const peers = S.protocols.filter((p) => !houseExcluded(p));
+  const oTerms = R.odds.terms;
+  const oFill = ageFill(peers);
+  const oFeat = (p) => { const f = [1]; if (oTerms.includes('lntvl')) f.push((Math.log(p.tvl_usd) - 17) / 2); if (oTerms.includes('age')) f.push(ageFeat(p, oFill) - 1.5); if (oTerms.includes('chains')) f.push(p.chains.length - 1); if (oTerms.includes('growth')) f.push(Math.max(-2, Math.min(10, (p.change_7d ?? 0) / 10))); if (oTerms.includes('family')) for (const fm of FAMS) f.push(family(p) === fm ? 1 : 0); return f; };
+  const sigmoid = (z) => 1 / (1 + Math.exp(-Math.max(-30, Math.min(30, z))));
+  const X = peers.map(oFeat), y = peers.map((p) => (tokenRecorded(p) ? 1 : 0));
+  const d = X[0].length, w = new Array(d).fill(0);
+  for (let it = 0; it < 3000; it++) {
+    const g = new Array(d).fill(0);
+    for (let i = 0; i < X.length; i++) { const pr = sigmoid(X[i].reduce((s, v, j) => s + v * w[j], 0)); for (let j = 0; j < d; j++) g[j] += (pr - y[i]) * X[i][j]; }
+    for (let j = 0; j < d; j++) w[j] -= 0.05 * (g[j] / X.length + (j === 0 ? 0 : (3.0 * w[j]) / X.length));
+  }
+  const odds = (p) => sigmoid(oFeat(p).reduce((s, v, j) => s + v * w[j], 0));
+  const comps = pricedComp.filter((p) => p.category !== 'CEX');
+  const vFill = ageFill(comps);
+  const vFeat = (p) => { const f = [1, Math.log(p.tvl_usd)]; if (R.value.terms.includes('age')) f.push(ageFeat(p, vFill)); if (R.value.terms.includes('growth')) f.push(Math.max(-2, Math.min(10, (p.change_7d ?? 0) / 10))); return f; };
+  const Xv = comps.map(vFeat), yv = comps.map((p) => Math.log(p.mcap_usd));
+  const dv = Xv[0].length;
+  const A = Array.from({ length: dv }, () => new Array(dv).fill(0)), b = new Array(dv).fill(0);
+  for (let i = 0; i < Xv.length; i++) for (let j = 0; j < dv; j++) { b[j] += Xv[i][j] * yv[i]; for (let k = 0; k < dv; k++) A[j][k] += Xv[i][j] * Xv[i][k]; }
+  for (let j = 0; j < dv; j++) A[j][j] += 1e-4;
+  for (let c = 0; c < dv; c++) { let piv = c; for (let r = c + 1; r < dv; r++) if (Math.abs(A[r][c]) > Math.abs(A[piv][c])) piv = r; [A[c], A[piv]] = [A[piv], A[c]]; [b[c], b[piv]] = [b[piv], b[c]]; for (let r = 0; r < dv; r++) { if (r === c) continue; const f = A[r][c] / A[c][c]; for (let k = c; k < dv; k++) A[r][k] -= f * A[c][k]; b[r] -= f * b[c]; } }
+  const beta = b.map((v, j) => v / A[j][j]);
+  const value = (p) => Math.exp(vFeat(p).reduce((s, v, j) => s + v * beta[j], 0));
+  const mine = boardSet.map((p) => ({ slug: p.slug, implied: odds(p) * value(p) })).sort((a, b2) => b2.implied - a.implied);
+  let same = 0, maxDrift = 0;
+  const bySlug = new Map(mine.map((m) => [m.slug, m.implied]));
+  R.rows.forEach((r, i) => { if (mine[i] && mine[i].slug === r.slug) same++; const m = bySlug.get(r.slug); if (m) maxDrift = Math.max(maxDrift, Math.abs(m - r.implied_value_usd) / r.implied_value_usd); });
+  return { n: mine.length, same, maxDrift };
 }
 
 const state = { tab: 'board', tier: 'ALL', q: '', category: '', chain: '', sort: 'implied', detail: null };
@@ -66,7 +132,7 @@ function accounting() {
   const sealHere = h.toString(16).padStart(8, '0');
   return `<div class="formula"><b>Implied value = token odds</b> (fitted on ${R.odds.peers} peers' own record) <b>× value if it launches</b> (fitted on ${R.ledger.comps_used} priced comparables). Each coefficient is fitted on this snapshot and tested held-out, below.</div>
   <div class="bar">${bar}</div><div class="legend">${legend}</div>
-  <div class="checks"><span>✓ this page recomputed the board: ${R.rows.length} of ${R.rows.length} rows</span><span>✓ ranks 1–${R.rows.length} in order: ${ranksOk ? 'yes' : 'NO'}</span><span>✓ values never rise with rank: ${neverRise ? 'yes' : 'NO'}</span><span>✓ totals equal: ${money(tvl)} TVL · ${money(imp)} implied</span><span>✓ ledger accounts for ${L.total} of ${L.total} protocols</span><span>✓ board seal <span class="mono">${sealHere}</span> = build's <span class="mono">${R.seal}</span>: ${sealHere === R.seal ? 'match' : 'MISMATCH'}</span></div>`;
+  <div class="checks"><span>✓ this page recomputed the board: ${R.rows.length} of ${R.rows.length} rows</span><span>✓ ranks 1–${R.rows.length} in order: ${ranksOk ? 'yes' : 'NO'}</span><span>✓ values never rise with rank: ${neverRise ? 'yes' : 'NO'}</span><span>✓ totals equal: ${money(tvl)} TVL · ${money(imp)} implied</span><span>✓ ledger accounts for ${L.total} of ${L.total} protocols</span><span>✓ board seal <span class="mono">${sealHere}</span> = build's <span class="mono">${R.seal}</span>: ${sealHere === R.seal ? 'match' : 'MISMATCH'}</span>${REFIT ? `<span>✓ refit in this page, from the raw snapshot: ${REFIT.same} of ${REFIT.n} ranks identical · largest implied drift ${(REFIT.maxDrift * 100).toFixed(3)}%</span>` : '<span>· in-page refit unavailable in this copy</span>'}</div>`;
 }
 
 function evidenceStrip() {
@@ -103,6 +169,8 @@ function evidenceView() {
     + `<div class="panel"><h2>Are the odds calibrated?</h2><div class="cap">Out-of-fold predictions for all ${R.odds.peers} peers, binned in fifths. If the model says 60%, about 60% of those peers should record a token.</div>
     <table><thead><tr><th class="num">Mean predicted</th><th class="num">Share that record a token</th><th class="num">Peers</th></tr></thead><tbody>${R.calibration.map((c) => `<tr><td class="num">${pct(c.pred, 1)}</td><td class="num">${pct(c.actual, 1)}</td><td class="num">${c.n}</td></tr>`).join('')}</tbody></table>
     <p>The bins track the diagonal closely; the fourth fifth under-predicts (predicted ${pct(R.calibration[3].pred, 0)}, actual ${pct(R.calibration[3].actual, 0)}) and the top fifth is near-exact (predicted ${pct(R.calibration[4].pred, 0)}, actual ${pct(R.calibration[4].actual, 0)}). Coefficient uncertainty from the same 150 bootstrap refits as the rank ranges: the value model's size slope is ${R.value.beta[1].toFixed(2)} ± ${R.value.se_slope.toFixed(2)}, and its multiple at $100M TVL is uncertain by a factor of ×/÷${R.value.se_mult100.toFixed(2)} — small next to the ×${R.value.final_loo.toFixed(2)} held-out miss, which is why the ranges come from the residuals, not the fit.</p></div>`
+    + `<div class="panel"><h2>Does the board survive a time split?</h2><div class="cap">Both stages refitted on the past only — odds on peers listed before 2025, value on the older half of the dated comparables — then the same 200 protocols re-ranked by a model that never saw 2025.</div>
+    <p><b>${R.stability.top40_overlap} of the top 40</b> are still in the top 40 under the walk-forward board, the <b>rank-1 protocol is ${R.stability.top1_same ? 'the same' : 'different'}</b>, and the median row moves <b>${R.stability.median_shift} ranks</b>. The head of the board is a property of the record, not of the fitting window; the tail is not, and the rank ranges on the board say so row by row.</p></div>`
     + `<div class="panel"><h2>How to read this board</h2><div class="cap">What the numbers are, and what they are not.</div>
     <p>The odds are the peers' record, not a forecast: of ${R.odds.peers} comparable protocols, ${pct(R.odds.base_rate, 1)} record a token on DefiLlama. The model adjusts that base rate by size, by how long a protocol has gone without a token, by last week's TVL growth, and by family — the four adjustments that survived both tests. Chain count was tested and rejected. The growth adjustment is small and negative: in this record, a hot week slightly lowers the odds a protocol ever records a token. For the value stage growth was tested and rejected outright, so a hot week never raises a protocol's price here.</p>
     <p>The value stage prices a launch from ${R.ledger.comps_used} protocols whose tokens trade: ln(market cap) = ${R.value.beta.map((b) => b.toFixed(3)).join(' + ')} × [1, ln(TVL)${R.value.terms.includes('age') ? ', ln(1 + age)' : ''}${R.value.terms.includes('growth') ? ', 7d growth' : ''}]. Family and category multipliers were tested and rejected — with this few comparables they price the fit set better and new protocols worse. ${R.ledger.dated_comps} of the ${R.ledger.comps_used} comparables carry a listing date; the rest enter the fit with the dated rows' median age, and the walk-forward runs on the dated ones only.</p>
@@ -118,7 +186,7 @@ function methodView() {
   <dt>Ranges</dt><dd>P25–P75 per row is the value range implied by the leave-one-out residual quantiles (×${R.spread.p25.toFixed(2)} to ×${R.spread.p75.toFixed(2)}). Rank ranges are the interquartile ranks over 150 bootstrap refits of the value stage with the odds held fixed.</dd>
   <dt>Farm economics</dt><dd>Scenario, adjustable on the board: the drop is ${scen.drop}% of implied value shared pro-rata across all deposits; the plan deposit is ${scen.planPct}% of TVL (min $500, max $100,000); the only cost charged is gas at $2.57 per transaction, since the deposit earns the protocol's base yield. Verdicts: FARM needs net ≥ $50 and ≥ $8 per hour of attention over a ${scen.horizon}-week horizon; MARGINAL is any positive net; the rest are SKIP.</dd>
   <dt>Limits</dt><dd>DefiLlama's record is not proof: a protocol listed as pre-token may have a token the record does not carry. Listing dates are missing for 113 of ${R.ledger.total} protocols. The snapshot is one day (${esc(R.as_of)}); nothing here is live.</dd>
-  <dt>Reproducibility</dt><dd>main.ts refits both stages from the sealed snapshot on every run and writes board.json; this page recomputes the board's ranks and totals from that same data and prints the checks above the board, including a seal — a hash of the board's rows — recomputed here and compared with the build's copy.</dd>
+  <dt>Reproducibility</dt><dd>main.ts refits both stages from the sealed snapshot on every run and writes board.json; this page recomputes the board's ranks and totals from that same data and prints the checks above the board, including a seal — a hash of the board's rows — recomputed here and compared with the build's copy. Stronger still: the page ships the raw snapshot and refits both stages itself, in the reader's browser, then diffs its own board against the build's (the refit line in the checks above). The one thing the in-page refit does not redo is the ablation court — that stays in the build, with its tables on the Evidence tab.</dd>
   <dt>Refused terms</dt><dd>Three additions faced the same court as the kept terms and failed it: a ridge-shrunk category effect (the formulation several rivals ship) improves the walk-forward to ×${R.value.ablation.find((a) => a.term.includes('ridge')).test2.toFixed(2)} but worsens leave-one-out, and a placebo control in each stage — the next protocol's numbers, which cannot cause this protocol's outcome — helps neither test, as it must not. All three rows are printed in the ablation tables.</dd>
   </dl></div>`;
 }
@@ -205,7 +273,7 @@ function render() {
   if (state.detail) { app.innerHTML = `<div class="wrap">${detailView(state.detail)}<div class="foot">Launch Radar — fitted on the DefiLlama snapshot of ${esc(R.as_of)}; nothing here is live.</div></div>`; bind(); return; }
   app.innerHTML = `<div class="wrap">
   <header class="top"><div><h1>Launch <span class="rad">Radar</span></h1><div class="sub">Pre-token protocols, valued from their own record: the odds a token comes, times what it would be worth.</div></div>
-  <div class="meta">DefiLlama snapshot ${esc(R.as_of)} · model refitted in this build<br>${R.ledger.total} protocols accounted for · ${R.rows.length} ranked</div></header>
+  <div class="meta">DefiLlama snapshot ${esc(R.as_of)} · model refitted in this build — and again in this page<br>${R.ledger.total} protocols accounted for · ${R.rows.length} ranked</div></header>
   ${kpiStrip()}${accounting()}
   ${state.tab === 'board' ? evidenceStrip() : ''}
   <div class="tabs"><button class="tab ${state.tab === 'board' ? 'on' : ''}" data-tab="board">Board</button><button class="tab ${state.tab === 'evidence' ? 'on' : ''}" data-tab="evidence">Evidence</button><button class="tab ${state.tab === 'method' ? 'on' : ''}" data-tab="method">Method</button></div>

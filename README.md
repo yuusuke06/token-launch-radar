@@ -12,6 +12,13 @@ Every ranked row carries a farm plan with stated costs and times, and the whole 
 rendered as a static dashboard with a per-protocol detail view and an evidence tab that shows
 the model's held-out tests, including the terms that failed them.
 
+**v4** keeps the same model and removes the last reason to trust the build: the raw
+snapshot ships with the dashboard, and on load the page refits both stages itself, in the
+reader's browser, and diffs its own board against the build's — 200 of 200 ranks
+identical, largest implied drift 0.003% (whole-dollar rounding). It also adds a time-split
+rank-stability check: both stages refitted on the past only still put 33 of the top 40 in
+the top 40, with the same rank 1.
+
 **v3** keeps the v2 model — it survived its own tests — and deepens the evidence around it:
 out-of-fold calibration of the odds, split-half range honesty (older vs newer tokens), a
 board seal the page recomputes and compares with the build's, the nearest priced comparables

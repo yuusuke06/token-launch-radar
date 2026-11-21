@@ -1,4 +1,4 @@
-// Launch Radar v3 model: two fitted stages over the sealed snapshot.
+// Launch Radar v4 model: two fitted stages over the sealed snapshot.
 //
 // Stage 1 prices the chance that a pre-token protocol records a token at
 // all: a logistic fit on the snapshot's own peers (protocols that are not
@@ -316,6 +316,7 @@ export interface RadarData {
   spread: { p25: number; p75: number; p10: number; p90: number; honesty_2575: number; honesty_1090: number; honesty_old_2575: number; honesty_new_2575: number; honesty_old_1090: number; honesty_new_1090: number; split_n: number };
   calibration: { pred: number; actual: number; n: number }[];
   seal: string;
+  stability: { top40_overlap: number; top1_same: boolean; median_shift: number };
   verdicts: Record<string, number>;
   rows: RadarRow[];
 }
@@ -474,6 +475,22 @@ export function buildRadar(snapshot: Snapshot): { board: BoardRow[]; radar: Rada
       peers: nearestPeers(r.p),
     };
   });
+  // time-split stability: refit both stages on the past only (odds on
+  // peers listed before 2025, value on the older half of the dated
+  // comparables), re-rank the same 200 protocols, and count how much
+  // of the board survives contact with a model that never saw 2025.
+  const stability = ((): { top40_overlap: number; top1_same: boolean; median_shift: number } => {
+    const datedPeers = peers.filter((p) => p.listed_at && p.listed_at < '2025-01-01');
+    const oFit = fitLogit(asOf, datedPeers, oddsTerms);
+    const datedComps = [...comps].filter((p) => p.listed_at).sort((a, b) => (a.listed_at! < b.listed_at! ? -1 : 1));
+    const vFit = fitValue(asOf, datedComps.slice(0, Math.floor(datedComps.length / 2)), valueTerms);
+    const wfRank = new Map(raw.map((r) => ({ slug: r.p.slug, v: predictOdds(asOf, oFit, r.p, oddsTerms) * vFit.predict(r.p) })).sort((a, b) => b.v - a.v).map((x, i) => [x.slug, i + 1] as const));
+    const top40 = new Set(rows.slice(0, 40).map((r) => r.slug));
+    const wfTop40 = new Set([...wfRank.entries()].filter(([, rk]) => rk <= 40).map(([s]) => s));
+    const shifts = rows.map((r) => Math.abs(r.rank - (wfRank.get(r.slug) ?? r.rank))).sort((a, b) => a - b);
+    return { top40_overlap: [...top40].filter((s) => wfTop40.has(s)).length, top1_same: rows[0]!.slug === [...wfRank.entries()].find(([, rk]) => rk === 1)![0], median_shift: shifts[Math.floor(shifts.length / 2)]! };
+  })();
+
   // seal: an FNV-1a hash of the board's canonical rows. The dashboard
   // recomputes it from the data it renders and prints both copies; a
   // page whose table disagreed with the build would show the mismatch.
@@ -492,6 +509,7 @@ export function buildRadar(snapshot: Snapshot): { board: BoardRow[]; radar: Rada
     spread: { ...spread, honesty_2575: shareIn(spread.p25, spread.p75), honesty_1090: shareIn(spread.p10, spread.p90), honesty_old_2575: honestySplit.old2575, honesty_new_2575: honestySplit.new2575, honesty_old_1090: honestySplit.old1090, honesty_new_1090: honestySplit.new1090, split_n: honestySplit.n },
     calibration,
     seal,
+    stability,
     verdicts: rows.reduce<Record<string, number>>((m, r) => ((m[r.verdict] = (m[r.verdict] ?? 0) + 1), m), {}),
     rows,
   };

@@ -1,4 +1,4 @@
-// Launch Radar v3: a token-radar-01 entry (Node 22, standard library only).
+// Launch Radar v4: a token-radar-01 entry (Node 22, standard library only).
 //
 // Reads the sealed snapshot, fits the two-stage model in lib/model.ts on
 // the snapshot's own protocols (launch odds from the peer record, launch
@@ -34,7 +34,7 @@ function arg(name: string, fallback: string): string {
 const inputArg = arg('input', '/input');
 const inputFile = inputArg.endsWith('.json') ? inputArg : join(inputArg, 'snapshot.json');
 if (!existsSync(inputFile)) {
-  process.stderr.write(`launch radar v3: no snapshot at ${inputFile}: pass --input <snapshot.json|directory> or mount the sealed /input\n`);
+  process.stderr.write(`launch radar v4: no snapshot at ${inputFile}: pass --input <snapshot.json|directory> or mount the sealed /input\n`);
   process.exit(2);
 }
 const out = arg('output', process.env.MAKEFUN_OUTPUT_DIR ?? '/output');
@@ -43,13 +43,17 @@ const snapshot = parseSnapshot(readFileSync(inputFile, 'utf8'));
 const { board, radar } = buildRadar(snapshot);
 const issue = boardIssue(board, snapshot);
 if (issue !== null) {
-  process.stderr.write(`launch radar v3: the model wrote a board the gate refuses: ${issue}\n`);
+  process.stderr.write(`launch radar v4: the model wrote a board the gate refuses: ${issue}\n`);
   process.exit(1);
 }
 
 mkdirSync(out, { recursive: true });
 writeFileSync(join(out, 'board.json'), `${JSON.stringify({ rows: board })}\n`);
 writeFileSync(join(out, 'data.js'), dataScript(radar));
+// The raw snapshot ships too: the dashboard refits both model stages
+// from it, in the reader's browser, and diffs the result against the
+// board above — the page does not have to take the build's word for it.
+writeFileSync(join(out, 'snapshot.js'), `window.SNAPSHOT = ${JSON.stringify(snapshot)};\n`);
 
 function copyFiles(from: string, to: string): string[] {
   if (!existsSync(from)) return [];
@@ -68,12 +72,12 @@ function copyFiles(from: string, to: string): string[] {
 const pageFiles = copyFiles(join(here, 'dashboard'), join(out, 'dashboard'));
 const shots = copyFiles(join(here, 'screenshots'), join(out, 'screenshots'));
 if (shots.length < 3) {
-  process.stderr.write(`launch radar v3: screenshots/ holds ${shots.length} image${shots.length === 1 ? '' : 's'}: hand in 3, the board, the evidence and a detail view\n`);
+  process.stderr.write(`launch radar v4: screenshots/ holds ${shots.length} image${shots.length === 1 ? '' : 's'}: hand in 3, the board, the evidence and a detail view\n`);
   process.exit(1);
 }
 for (const name of shots) {
   if (!IMAGE_NAME.test(name)) {
-    process.stderr.write(`launch radar v3: screenshots/${name}: a name is letters, digits and . _ -, 1 to 128 characters\n`);
+    process.stderr.write(`launch radar v4: screenshots/${name}: a name is letters, digits and . _ -, 1 to 128 characters\n`);
     process.exit(1);
   }
 }
@@ -81,7 +85,7 @@ for (const name of shots) {
 writeFileSync(join(out, 'dossier.json'), buildDossier(out, { text_max_bytes: TEXT_MAX_BYTES, screenshots: SCREENSHOT_CAPS, dashboard: { max_files: 400, max_bytes: 4_194_304 } }));
 
 process.stdout.write(
-  `launch radar v3: ${snapshot.protocols.length} protocols, ${snapshot.watchlist.length} on the watchlist, ${board.length} rows ranked, all ${snapshot.watchlist.length} watchlist slugs covered\n` +
-    `launch radar v3: odds terms [${radar.odds.terms.join(', ')}], ten-fold Brier ${radar.odds.final_cv.toFixed(3)} against a ${radar.odds.base_rate.toFixed(3)} base rate; value terms [${radar.value.terms.join(', ')}], leave-one-out miss x${radar.value.final_loo.toFixed(2)} against x${radar.value.flat_miss.toFixed(2)} for the flat multiple\n` +
-    `launch radar v3: verdicts ${JSON.stringify(radar.verdicts)}; wrote board.json, data.js, dashboard (${pageFiles.length} files), screenshots (${shots.length} images) and dossier.json\n`,
+  `launch radar v4: ${snapshot.protocols.length} protocols, ${snapshot.watchlist.length} on the watchlist, ${board.length} rows ranked, all ${snapshot.watchlist.length} watchlist slugs covered\n` +
+    `launch radar v4: odds terms [${radar.odds.terms.join(', ')}], ten-fold Brier ${radar.odds.final_cv.toFixed(3)} against a ${radar.odds.base_rate.toFixed(3)} base rate; value terms [${radar.value.terms.join(', ')}], leave-one-out miss x${radar.value.final_loo.toFixed(2)} against x${radar.value.flat_miss.toFixed(2)} for the flat multiple\n` +
+    `launch radar v4: verdicts ${JSON.stringify(radar.verdicts)}; wrote board.json, data.js, dashboard (${pageFiles.length} files), screenshots (${shots.length} images) and dossier.json\n`,
 );
