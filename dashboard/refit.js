@@ -13,11 +13,14 @@
 // What the refit covers: the ledger classification, the top-200
 // board set, the launch-odds fit (logistic, gradient descent,
 // L2 lambda 3, 3000 iterations), the if-it-launches fit (OLS on log
-// market cap), the implied values and the ranks. What it does not
-// redo: the ablation court that chose the terms (that lives in the
-// build, with its tables on the Evidence tab) and the farm-plan
-// economics (those are arithmetic on stated assumptions, recomputed
-// live by app.js itself on every slider move).
+// market cap), the implied values and the ranks — and, since v5,
+// the out-of-fold calibration bins: the same ten fold fits the
+// build ran, each peer scored by the fit that never saw its fold,
+// binned in fifths and compared with the printed bins. What it
+// does not redo: the ablation court that chose the terms (that
+// lives in the build, with its tables on the Evidence tab) and the
+// farm-plan economics (those are arithmetic on stated assumptions,
+// recomputed live by app.js itself on every slider move).
 //
 // If a future model ever keeps group multipliers (category or family
 // effects in the value stage), this refit refuses to run rather than
@@ -84,28 +87,60 @@ function refitBoard(S, R) {
   // --- stage one: launch odds, logistic fit on the 465 peers
   const peers = S.protocols.filter((p) => !houseExcluded(p));
   const oTerms = R.odds.terms;
-  const oFill = ageFill(peers);
-  const oFeat = (p) => {
+  const sigmoid = (z) => 1 / (1 + Math.exp(-Math.max(-30, Math.min(30, z))));
+  const oFeat = (p, fill) => {
     const f = [1];
     if (oTerms.includes('lntvl')) f.push((Math.log(p.tvl_usd) - 17) / 2);
-    if (oTerms.includes('age')) f.push(ageFeat(p, oFill) - 1.5);
+    if (oTerms.includes('age')) f.push(ageFeat(p, fill) - 1.5);
     if (oTerms.includes('chains')) f.push(p.chains.length - 1);
     if (oTerms.includes('growth')) f.push(Math.max(-2, Math.min(10, (p.change_7d ?? 0) / 10)));
     if (oTerms.includes('family')) for (const fm of FAMS) f.push(family(p) === fm ? 1 : 0);
     return f;
   };
-  const sigmoid = (z) => 1 / (1 + Math.exp(-Math.max(-30, Math.min(30, z))));
-  const X = peers.map(oFeat), y = peers.map((p) => (tokenRecorded(p) ? 1 : 0));
-  const d = X[0].length, w = new Array(d).fill(0);
-  for (let it = 0; it < 3000; it++) {
-    const g = new Array(d).fill(0);
-    for (let i = 0; i < X.length; i++) {
-      const pr = sigmoid(X[i].reduce((s, v, j) => s + v * w[j], 0));
-      for (let j = 0; j < d; j++) g[j] += (pr - y[i]) * X[i][j];
+  // One descent, parameterised by its training rows, so the final
+  // fit and the ten calibration folds run the identical procedure
+  // the build runs — each with its own median-age fill, taken from
+  // its own training rows.
+  const fitLogit = (rows) => {
+    const fill = ageFill(rows);
+    const X = rows.map((p) => oFeat(p, fill));
+    const yv = rows.map((p) => (tokenRecorded(p) ? 1 : 0));
+    const dd = X[0].length, wv = new Array(dd).fill(0);
+    for (let it = 0; it < 3000; it++) {
+      const g = new Array(dd).fill(0);
+      for (let i = 0; i < X.length; i++) {
+        const pr = sigmoid(X[i].reduce((s, v, j) => s + v * wv[j], 0));
+        for (let j = 0; j < dd; j++) g[j] += (pr - yv[i]) * X[i][j];
+      }
+      for (let j = 0; j < dd; j++) wv[j] -= 0.05 * (g[j] / X.length + (j === 0 ? 0 : (3.0 * wv[j]) / X.length));
     }
-    for (let j = 0; j < d; j++) w[j] -= 0.05 * (g[j] / X.length + (j === 0 ? 0 : (3.0 * w[j]) / X.length));
+    return { w: wv, fill };
+  };
+  const oFit = fitLogit(peers);
+  const odds = (p) => sigmoid(oFeat(p, oFit.fill).reduce((s, v, j) => s + v * oFit.w[j], 0));
+
+  // --- calibration, reproduced: every peer scored out-of-fold by
+  // the fit that never saw its fold (the ten-fold split in slug
+  // order), predictions binned in fifths, and each bin's mean
+  // prediction and realised share compared with the printed bins.
+  let calib = null;
+  {
+    const bySlug = [...peers].sort((a, b) => (a.slug < b.slug ? -1 : 1));
+    const foldFits = Array.from({ length: 10 }, (_, k) => fitLogit(bySlug.filter((_, j) => j % 10 !== k)));
+    const oof = bySlug.map((p, i) => {
+      const f = foldFits[i % 10];
+      return { pred: sigmoid(oFeat(p, f.fill).reduce((s, v, j) => s + v * f.w[j], 0)), y: tokenRecorded(p) ? 1 : 0 };
+    }).sort((a, b) => a.pred - b.pred);
+    let match = 0;
+    for (let b = 0; b < 5; b++) {
+      const bin = oof.slice(Math.floor((b * oof.length) / 5), Math.floor(((b + 1) * oof.length) / 5));
+      const pred = bin.reduce((s, x) => s + x.pred, 0) / bin.length;
+      const actual = bin.reduce((s, x) => s + x.y, 0) / bin.length;
+      const printed = R.calibration[b];
+      if (printed && Math.abs(pred - printed.pred) <= 0.001 && Math.abs(actual - printed.actual) <= 0.001) match++;
+    }
+    calib = { bins: 5, match };
   }
-  const odds = (p) => sigmoid(oFeat(p).reduce((s, v, j) => s + v * w[j], 0));
 
   // --- stage two: value if it launches, OLS on the 119 comparables
   const comps = pricedComp.filter((p) => p.category !== 'CEX');
@@ -147,5 +182,5 @@ function refitBoard(S, R) {
     const m = bySlug.get(r.slug);
     if (m) maxDrift = Math.max(maxDrift, Math.abs(m - r.implied_value_usd) / r.implied_value_usd);
   });
-  return { n: mine.length, same, maxDrift };
+  return { n: mine.length, same, maxDrift, calib };
 }

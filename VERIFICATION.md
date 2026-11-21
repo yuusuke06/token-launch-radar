@@ -178,3 +178,32 @@ on the dashboard's Evidence tab, and the checks line above the
 board states the build's seconds against the 120 s budget. A
 build that cannot state its runtime cannot show it fits; this
 one states it.
+
+## 10. Two more pairs of eyes (v5)
+
+Two checks join the set in this version, both aimed at readers
+who were not in the room when the earlier ones were written.
+
+**The standalone verifier** (`verify/verify-build.mjs`, plain
+Node, no dependencies) takes a built dossier directory and
+re-derives its accounting from the shipped artifacts alone — the
+snapshot from the dossier's own `snapshot.js`, the board from
+`board.json`, the printed figures from `data.js`. It re-counts
+the ledger, re-checks watchlist coverage and every board rule
+the house states, recomputes the seal from the rows, and
+confirms the build's stated runtime sits inside the grader's
+budget with phase seconds that add up. It refits nothing: its
+job is to be the third, dumbest pair of eyes, checking form and
+accounting with fresh code. Run against this build it reports
+18 of 18 checks passed.
+
+**The in-page calibration reproduction.** The dashboard's refit
+(`dashboard/refit.js`) already refits both model stages in the
+reader's browser and diffs the board. It now also reproduces
+the out-of-fold calibration: the same ten fold fits, each peer
+scored by the fit that never saw its fold, binned in fifths and
+compared bin by bin with the printed table on the Evidence tab.
+The checks line above the board prints the outcome next to the
+board diff. What the page still does not redo is the ablation
+court — the term-selection trials stay in the build, with their
+tables printed in full.
