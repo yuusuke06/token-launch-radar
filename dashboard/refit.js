@@ -17,10 +17,14 @@
 // the out-of-fold calibration bins: the same ten fold fits the
 // build ran, each peer scored by the fit that never saw its fold,
 // binned in fifths and compared with the printed bins. What it
-// does not redo: the ablation court that chose the terms (that
-// lives in the build, with its tables on the Evidence tab) and the
-// farm-plan economics (those are arithmetic on stated assumptions,
-// recomputed live by app.js itself on every slider move).
+// also reproduces the bootstrap rank ranges (150 seeded refits of
+// the value stage) and the time-split stability counts, so every
+// number on the Evidence tab except the court's own scores is
+// re-derived here. What it does not redo: the ablation court that
+// chose the terms (that lives in the build, with its tables on the
+// Evidence tab) and the farm-plan economics (those are arithmetic
+// on stated assumptions, recomputed live by app.js itself on every
+// slider move).
 //
 // If a future model ever keeps group multipliers (category or family
 // effects in the value stage), this refit refuses to run rather than
@@ -173,6 +177,92 @@ function refitBoard(S, R) {
   const beta = b.map((v, j) => v / A[j][j]);
   const value = (p) => Math.exp(vFeat(p).reduce((s, v, j) => s + v * beta[j], 0));
 
+  // The same OLS, parameterised by its rows, for the two
+  // reproductions below (bootstrap resamples and the time-split
+  // refit). Each call takes its own median-age fill from its own
+  // rows, exactly as the build's fitValue does.
+  const fitValue = (rows) => {
+    const fill = ageFill(rows);
+    const feat = (p) => {
+      const f = [1, Math.log(p.tvl_usd)];
+      if (R.value.terms.includes('age')) f.push(ageFeat(p, fill));
+      if (R.value.terms.includes('growth')) f.push(Math.max(-2, Math.min(10, (p.change_7d ?? 0) / 10)));
+      return f;
+    };
+    const Xr = rows.map(feat), yr = rows.map((p) => Math.log(p.mcap_usd));
+    const dr = Xr[0].length;
+    const Ar = Array.from({ length: dr }, () => new Array(dr).fill(0)), br = new Array(dr).fill(0);
+    for (let i = 0; i < Xr.length; i++) for (let j = 0; j < dr; j++) {
+      br[j] += Xr[i][j] * yr[i];
+      for (let k = 0; k < dr; k++) Ar[j][k] += Xr[i][j] * Xr[i][k];
+    }
+    for (let j = 0; j < dr; j++) Ar[j][j] += 1e-4;
+    for (let c = 0; c < dr; c++) {
+      let piv = c;
+      for (let r = c + 1; r < dr; r++) if (Math.abs(Ar[r][c]) > Math.abs(Ar[piv][c])) piv = r;
+      [Ar[c], Ar[piv]] = [Ar[piv], Ar[c]]; [br[c], br[piv]] = [br[piv], br[c]];
+      for (let r = 0; r < dr; r++) {
+        if (r === c) continue;
+        const f = Ar[r][c] / Ar[c][c];
+        for (let k = c; k < dr; k++) Ar[r][k] -= f * Ar[c][k];
+        br[r] -= f * br[c];
+      }
+    }
+    const bt = br.map((v, j) => v / Ar[j][j]);
+    return (p) => Math.exp(feat(p).reduce((s, v, j) => s + v * bt[j], 0));
+  };
+
+  // --- the rank ranges, reproduced: 150 bootstrap refits of the
+  // value stage on resampled comparables (the build's seeded
+  // generator, seed 1234567), the odds held fixed, each row's
+  // interquartile ranks compared with the printed ones.
+  let boot = null;
+  {
+    let seed = 1234567;
+    const rnd = () => (seed = (seed * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff;
+    const base = boardSet.map((p) => ({ slug: p.slug, odds: odds(p), p }));
+    const samples = new Map(base.map((x) => [x.slug, []]));
+    for (let b = 0; b < 150; b++) {
+      const sample = Array.from({ length: comps.length }, () => comps[Math.floor(rnd() * comps.length)]);
+      const predict = fitValue(sample);
+      base.map((x) => ({ slug: x.slug, v: x.odds * predict(x.p) }))
+        .sort((a, c) => c.v - a.v)
+        .forEach((s, rank) => samples.get(s.slug).push(rank + 1));
+    }
+    let match = 0;
+    for (const r of R.rows) {
+      const s = samples.get(r.slug).sort((a, b) => a - b);
+      if (s[Math.floor(0.25 * s.length)] === r.rank_best && s[Math.floor(0.75 * s.length)] === r.rank_worst) match++;
+    }
+    boot = { rows: R.rows.length, match };
+  }
+
+  // --- the time split, reproduced: both stages refitted on the
+  // past only (odds on peers listed before 2025, value on the
+  // older half of the dated comparables), the same 200 protocols
+  // re-ranked, and the survival counts compared with the printed
+  // ones.
+  let stab = null;
+  {
+    const datedPeers = peers.filter((p) => p.listed_at && p.listed_at < '2025-01-01');
+    const oFitPast = fitLogit(datedPeers);
+    const oddsPast = (p) => sigmoid(oFeat(p, oFitPast.fill).reduce((s, v, j) => s + v * oFitPast.w[j], 0));
+    const datedComps = [...comps].filter((p) => p.listed_at).sort((a, b) => (a.listed_at < b.listed_at ? -1 : 1));
+    const valuePast = fitValue(datedComps.slice(0, Math.floor(datedComps.length / 2)));
+    const wf = boardSet.map((p) => ({ slug: p.slug, v: oddsPast(p) * valuePast(p) })).sort((a, b) => b.v - a.v);
+    const wfRank = new Map(wf.map((x, i) => [x.slug, i + 1]));
+    const top40 = new Set(R.rows.slice(0, 40).map((r) => r.slug));
+    const wfTop40 = new Set(wf.slice(0, 40).map((x) => x.slug));
+    const overlap = [...top40].filter((s) => wfTop40.has(s)).length;
+    const top1 = wf[0].slug === R.rows[0].slug;
+    const shifts = R.rows.map((r) => Math.abs(r.rank - (wfRank.get(r.slug) ?? r.rank))).sort((a, b) => a - b);
+    const medianShift = shifts[Math.floor(shifts.length / 2)];
+    stab = {
+      overlap, top1, medianShift,
+      match: overlap === R.stability.top40_overlap && top1 === R.stability.top1_same && medianShift === R.stability.median_shift,
+    };
+  }
+
   // --- the diff: ranks identical, and the largest implied drift
   const mine = boardSet.map((p) => ({ slug: p.slug, implied: odds(p) * value(p) })).sort((a, b2) => b2.implied - a.implied);
   let same = 0, maxDrift = 0;
@@ -182,5 +272,5 @@ function refitBoard(S, R) {
     const m = bySlug.get(r.slug);
     if (m) maxDrift = Math.max(maxDrift, Math.abs(m - r.implied_value_usd) / r.implied_value_usd);
   });
-  return { n: mine.length, same, maxDrift, calib };
+  return { n: mine.length, same, maxDrift, calib, boot, stab };
 }

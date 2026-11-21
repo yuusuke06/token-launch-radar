@@ -207,3 +207,16 @@ The checks line above the board prints the outcome next to the
 board diff. What the page still does not redo is the ablation
 court — the term-selection trials stay in the build, with their
 tables printed in full.
+
+The same refit now also reproduces the two remaining Evidence
+claims. The **bootstrap rank ranges**: 150 refits of the value
+stage on resampled comparables, driven by the build's own seeded
+generator (seed 1234567), the odds held fixed — each row's
+interquartile ranks are compared with the printed ones. And the
+**time-split stability**: both stages refitted on the past only,
+the board re-ranked, and the top-40 survival count, the rank-1
+identity and the median shift compared with the printed panel.
+After these, the only figures the page does not re-derive are
+the ablation court's own scores — the term-selection trials —
+which stay in the build, with their tables printed in full on
+the Evidence tab for anyone to re-run from the snapshot.

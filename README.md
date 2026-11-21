@@ -65,6 +65,20 @@ pro-rata across all deposits, the plan deposit is 0.02% of TVL (min $500, max $1
 gas at $2.57 per transaction is the only cost charged. Verdicts: FARM 52, MARGINAL 124,
 SKIP 24 — and they move with the scenario sliders, which re-derive every verdict live.
 
+## Where each claim is checked
+
+| Claim on the page | Checked by |
+|---|---|
+| Board ranks, implied values, totals | the page itself, recomputed from `data.js` on every load (checks line) |
+| The board is the model's board | the page's own refit from the raw snapshot (`dashboard/refit.js`): both stages refitted in the browser, ranks diffed |
+| Calibration bins | the same in-page refit: ten fold fits, out-of-fold scores, bins compared |
+| Rank ranges (150 bootstrap refits) | the same in-page refit, with the build's seeded generator |
+| Time-split stability counts | the same in-page refit: both stages refitted on the past only |
+| The build agrees with itself | a second, independent implementation inside the build (`lib/audit.ts`); the build refuses to ship on any rank disagreement |
+| Ledger, watchlist coverage, board rules, seal | `node verify/verify-build.mjs <dossier-dir>` — fresh code, shipped artifacts only, 18 checks |
+| The build fits its time budget | the build's own clock, printed in the checks line and phased on the Evidence tab (v4 was rejected at ~113s of 120s; v5 runs in ~10s) |
+| Term selection (the ablation court) | not re-derived anywhere — the full tables are printed on the Evidence tab, and the snapshot ships with the page for anyone to re-run them |
+
 ## Running it
 
 ```
