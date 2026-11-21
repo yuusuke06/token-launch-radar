@@ -195,7 +195,7 @@ confirms the build's stated runtime sits inside the grader's
 budget with phase seconds that add up. It refits nothing: its
 job is to be the third, dumbest pair of eyes, checking form and
 accounting with fresh code. Run against this build it reports
-18 of 18 checks passed.
+22 of 22 checks passed.
 
 **The in-page calibration reproduction.** The dashboard's refit
 (`dashboard/refit.js`) already refits both model stages in the

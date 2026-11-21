@@ -263,6 +263,26 @@ function refitBoard(S, R) {
     };
   }
 
+  // --- the detail view's comparables, reproduced: for each board
+  // row, the three nearest priced comparables by log-TVL distance,
+  // same-category ones preferred inside a x4.5 size window — the
+  // build's stated rule, re-run here and compared name by name.
+  let peersCheck = null;
+  {
+    let match = 0;
+    for (const r of R.rows) {
+      const p = boardSet.find((x) => x.slug === r.slug);
+      const dist = (c) => Math.abs(Math.log(c.tvl_usd / p.tvl_usd));
+      const byDist = [...comps].sort((a, b) => dist(a) - dist(b));
+      const near = byDist.filter((c) => c.category === p.category && dist(c) <= 1.5);
+      const picked = [...near, ...byDist.filter((c) => !near.includes(c))].slice(0, 3);
+      const mine = picked.map((c) => ({ name: c.name, model: Math.round(value(c)) }));
+      const printed = r.peers || [];
+      if (mine.length === printed.length && mine.every((m, i) => m.name === printed[i].name && Math.abs(m.model - printed[i].model_usd) <= 1)) match++;
+    }
+    peersCheck = { rows: R.rows.length, match };
+  }
+
   // --- the diff: ranks identical, and the largest implied drift
   const mine = boardSet.map((p) => ({ slug: p.slug, implied: odds(p) * value(p) })).sort((a, b2) => b2.implied - a.implied);
   let same = 0, maxDrift = 0;
@@ -272,5 +292,5 @@ function refitBoard(S, R) {
     const m = bySlug.get(r.slug);
     if (m) maxDrift = Math.max(maxDrift, Math.abs(m - r.implied_value_usd) / r.implied_value_usd);
   });
-  return { n: mine.length, same, maxDrift, calib, boot, stab };
+  return { n: mine.length, same, maxDrift, calib, boot, stab, peersCheck };
 }

@@ -150,5 +150,22 @@ check(typeof radar.build?.seconds === 'number' && radar.build.seconds > 0 && rad
 const phaseSum = (radar.build?.phases ?? []).reduce((s, p) => s + p.seconds, 0);
 check(Math.abs(phaseSum - (radar.build?.seconds ?? -1)) < 1.5, 'phase seconds add up to the stated total', `${phaseSum.toFixed(2)}s across ${radar.build?.phases?.length ?? 0} phases`);
 
+// ---------- the handed-in files ----------
+
+import { readdirSync, statSync, existsSync } from 'node:fs';
+
+const dashFiles = ['dashboard/index.html', 'dashboard/app.js', 'dashboard/app.css', 'dashboard/refit.js', 'snapshot.js', 'data.js', 'board.json'];
+const absent = dashFiles.filter((f) => !existsSync(join(dir, f)));
+check(absent.length === 0, 'the dossier carries the full dashboard', absent.length ? `missing: ${absent.join(', ')}` : dashFiles.join(', '));
+
+const shotsDir = join(dir, 'screenshots');
+const shots = existsSync(shotsDir) ? readdirSync(shotsDir).filter((f) => /\.(png|jpe?g)$/i.test(f)) : [];
+check(shots.length >= 3 && shots.length <= 4, 'screenshot count within the hand-in limits', `${shots.length} images (3–4)`);
+const oversized = shots.filter((f) => statSync(join(shotsDir, f)).size > 262144);
+check(oversized.length === 0, 'every screenshot is within the 256 KiB cap', oversized.length ? `oversized: ${oversized.join(', ')}` : 'all within cap');
+
+const dossier = JSON.parse(readFileSync(join(dir, 'dossier.json'), 'utf8'));
+check(typeof dossier === 'object' && dossier !== null, 'dossier.json parses', 'the hand-in manifest is present');
+
 console.log(failures === 0 ? '\nAll checks passed.' : `\n${failures} check(s) failed.`);
 process.exit(failures === 0 ? 0 : 1);
