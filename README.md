@@ -77,7 +77,8 @@ SKIP 24 — and they move with the scenario sliders, which re-derive every verdi
 | The build agrees with itself | a second, independent implementation inside the build (`lib/audit.ts`); the build refuses to ship on any rank disagreement |
 | Ledger, watchlist coverage, board rules, seal | `node verify/verify-build.mjs <dossier-dir>` — fresh code, shipped artifacts only, 18 checks |
 | The build fits its time budget | the build's own clock, printed in the checks line and phased on the Evidence tab (v4 was rejected at ~113s of 120s; v5 runs in ~10s) |
-| Term selection (the ablation court) | not re-derived anywhere — the full tables are printed on the Evidence tab, and the snapshot ships with the page for anyone to re-run them |
+| The court's four headline scores | the build's second path (`auditCourt` in `lib/audit.ts`) re-derives the kept terms' ten-fold Brier, time split, leave-one-out and walk-forward; the build refuses to ship past a 0.01 disagreement |
+| Term selection (the ablation trials themselves) | not re-derived — the full tables are printed on the Evidence tab, and the snapshot ships with the page for anyone to re-run them |
 
 ## Running it
 

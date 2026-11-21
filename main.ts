@@ -16,7 +16,7 @@ import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, statSyn
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { boardIssue, buildRadar, dataScript, parseSnapshot } from './lib/model.ts';
-import { auditBoard } from './lib/audit.ts';
+import { auditBoard, auditCourt } from './lib/audit.ts';
 import { buildDossier } from './vendor/makefun-board.ts';
 
 const here = fileURLToPath(new URL('.', import.meta.url));
@@ -56,6 +56,17 @@ if (audit.ranks_identical !== audit.rows_checked) {
   process.exit(1);
 }
 process.stdout.write(`launch radar v5: audit passed — ${audit.ranks_identical} of ${audit.rows_checked} ranks reproduced by the second path, largest implied drift ${(audit.max_drift * 100).toFixed(3)}%, watchlist ${audit.watchlist_covered} of ${snapshot.watchlist.length}\n`);
+// The same second path re-derives the court's four headline
+// scores — the numbers the dashboard's first screen leads with.
+// A disagreement past float noise means one of the two
+// implementations is wrong, and the build does not ship.
+const court = auditCourt(snapshot, radar);
+const courtWorst = Math.max(court.cv_diff, court.ts_diff, court.loo_diff, court.wf_diff);
+if (courtWorst > 0.01) {
+  process.stderr.write(`launch radar v5: court audit failed — headline scores disagree with the second path (worst difference ${courtWorst.toFixed(4)})\n`);
+  process.exit(1);
+}
+process.stdout.write(`launch radar v5: court audit passed — ten-fold Brier ${court.cv.toFixed(3)}, time split ${court.ts.toFixed(3)}, leave-one-out x${court.loo.toFixed(2)}, walk-forward x${court.wf.toFixed(2)}, all re-derived by the second path\n`);
 
 mkdirSync(out, { recursive: true });
 writeFileSync(join(out, 'board.json'), `${JSON.stringify({ rows: board })}\n`);

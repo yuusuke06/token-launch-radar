@@ -66,13 +66,13 @@ function ageFeat(asOf: string, p: Protocol, fill: number): number {
 }
 const sigmoid = (z: number): number => 1 / (1 + Math.exp(-Math.max(-30, Math.min(30, z))));
 
-// Refit the odds stage from the snapshot, on the terms the build
-// published, and return a predictor. Gradient descent exactly as
-// specified for the model: step 0.05, L2 lambda 3, 3000 passes.
-function refitOdds(snapshot: Snapshot, terms: string[]): (p: Protocol) => number {
-  const asOf = snapshot.as_of;
-  const peers = snapshot.protocols.filter((p) => !houseExcluded(p));
-  const fill = ageFill(asOf, peers);
+// Refit the odds stage on a given set of training rows, on the
+// terms the build published, and return a predictor. Gradient
+// descent exactly as specified for the model: step 0.05, L2
+// lambda 3, 3000 passes. The median-age fill comes from the
+// training rows themselves, as in the build.
+function fitOddsOn(asOf: string, rows: Protocol[], terms: string[]): (p: Protocol) => number {
+  const fill = ageFill(asOf, rows);
   const feats = (p: Protocol): number[] => {
     const f = [1];
     if (terms.includes('lntvl')) f.push((Math.log(p.tvl_usd) - 17) / 2);
@@ -82,8 +82,8 @@ function refitOdds(snapshot: Snapshot, terms: string[]): (p: Protocol) => number
     if (terms.includes('family')) for (const fm of FAMS) f.push(family(p) === fm ? 1 : 0);
     return f;
   };
-  const X = peers.map(feats);
-  const y = peers.map((p) => (tokenRecorded(p) ? 1 : 0));
+  const X = rows.map(feats);
+  const y = rows.map((p) => (tokenRecorded(p) ? 1 : 0));
   const d = X[0]!.length;
   const w = new Array<number>(d).fill(0);
   for (let it = 0; it < 3000; it++) {
@@ -97,11 +97,13 @@ function refitOdds(snapshot: Snapshot, terms: string[]): (p: Protocol) => number
   return (p) => sigmoid(feats(p).reduce((s, v, j) => s + v * w[j]!, 0));
 }
 
-// Refit the value stage: OLS on log market cap over the priced
-// comparables the house did not exclude as exchanges.
-function refitValue(snapshot: Snapshot, terms: string[]): (p: Protocol) => number {
-  const asOf = snapshot.as_of;
-  const comps = snapshot.protocols.filter((p) => priced(p) && p.category !== 'CEX');
+function refitOdds(snapshot: Snapshot, terms: string[]): (p: Protocol) => number {
+  return fitOddsOn(snapshot.as_of, snapshot.protocols.filter((p) => !houseExcluded(p)), terms);
+}
+
+// Refit the value stage on a given set of training rows: OLS on
+// log market cap, the median-age fill taken from the rows.
+function fitValueOn(asOf: string, comps: Protocol[], terms: string[]): (p: Protocol) => number {
   const fill = ageFill(asOf, comps);
   const feats = (p: Protocol): number[] => {
     const f = [1, Math.log(p.tvl_usd)];
@@ -133,6 +135,76 @@ function refitValue(snapshot: Snapshot, terms: string[]): (p: Protocol) => numbe
   }
   const beta = b.map((v, j) => v / A[j]![j]!);
   return (p) => Math.exp(feats(p).reduce((s, v, j) => s + v * beta[j]!, 0));
+}
+
+function refitValue(snapshot: Snapshot, terms: string[]): (p: Protocol) => number {
+  return fitValueOn(snapshot.as_of, snapshot.protocols.filter((p) => priced(p) && p.category !== 'CEX'), terms);
+}
+
+// The court's headline scores, re-derived by this second path:
+// the kept odds terms' ten-fold Brier score and time-split Brier,
+// and the kept value terms' leave-one-out and walk-forward miss
+// factors. The build prints these four numbers on its first
+// screen; until now nothing re-derived them. The full court (the
+// rejected terms, the ridge rival, the placebos) stays the
+// build's own work, with its tables printed in full.
+export interface CourtResult {
+  cv: number;
+  ts: number;
+  loo: number;
+  wf: number;
+  cv_diff: number;
+  ts_diff: number;
+  loo_diff: number;
+  wf_diff: number;
+}
+
+const brier = (rows: Protocol[], predict: (p: Protocol) => number): number =>
+  rows.reduce((s, p) => s + (predict(p) - (tokenRecorded(p) ? 1 : 0)) ** 2, 0) / rows.length;
+
+const missFactor = (rows: Protocol[], predict: (p: Protocol) => number): number => {
+  const e = rows.map((p) => Math.abs(Math.log(p.mcap_usd! / predict(p)))).sort((a, b) => a - b);
+  return Math.exp(e[Math.floor(e.length / 2)]!);
+};
+
+export function auditCourt(snapshot: Snapshot, radar: RadarData): CourtResult {
+  const asOf = snapshot.as_of;
+  // odds: ten-fold cross-validation in slug order, then the time
+  // split on the dated peers (fit before 2025, score the rest).
+  const peers = snapshot.protocols.filter((p) => !houseExcluded(p));
+  const sorted = [...peers].sort((a, b) => (a.slug < b.slug ? -1 : 1));
+  let cv = 0;
+  for (let k = 0; k < 10; k++) {
+    const test = sorted.filter((_, i) => i % 10 === k);
+    const train = sorted.filter((_, i) => i % 10 !== k);
+    cv += brier(test, fitOddsOn(asOf, train, radar.odds.terms)) * test.length;
+  }
+  cv /= sorted.length;
+  const dated = peers.filter((p) => p.listed_at);
+  const ts = brier(
+    dated.filter((p) => p.listed_at! >= '2025-01-01'),
+    fitOddsOn(asOf, dated.filter((p) => p.listed_at! < '2025-01-01'), radar.odds.terms),
+  );
+  // value: leave-one-out over the comparables, then the
+  // walk-forward split of the dated ones at the median date.
+  const comps = snapshot.protocols.filter((p) => priced(p) && p.category !== 'CEX');
+  const errs: number[] = [];
+  for (let i = 0; i < comps.length; i++) {
+    const predict = fitValueOn(asOf, comps.filter((_, j) => j !== i), radar.value.terms);
+    errs.push(Math.abs(Math.log(comps[i]!.mcap_usd! / predict(comps[i]!))));
+  }
+  errs.sort((a, b) => a - b);
+  const loo = Math.exp(errs[Math.floor(errs.length / 2)]!);
+  const datedComps = [...comps].filter((p) => p.listed_at).sort((a, b) => (a.listed_at! < b.listed_at! ? -1 : 1));
+  const half = Math.floor(datedComps.length / 2);
+  const wf = missFactor(datedComps.slice(half), fitValueOn(asOf, datedComps.slice(0, half), radar.value.terms));
+  return {
+    cv, ts, loo, wf,
+    cv_diff: Math.abs(cv - radar.odds.final_cv),
+    ts_diff: Math.abs(ts - radar.odds.final_ts),
+    loo_diff: Math.abs(loo - radar.value.final_loo),
+    wf_diff: Math.abs(wf - radar.value.final_wf),
+  };
 }
 
 // The audit itself: rebuild the board set by the ledger rules,

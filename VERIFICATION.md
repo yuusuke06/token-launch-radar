@@ -220,3 +220,12 @@ After these, the only figures the page does not re-derive are
 the ablation court's own scores — the term-selection trials —
 which stay in the build, with their tables printed in full on
 the Evidence tab for anyone to re-run from the snapshot.
+
+One build-side gap closed at the same time: the court's four
+headline scores — the kept terms' ten-fold Brier, time split,
+leave-one-out and walk-forward — are now re-derived by the
+build's second path (`auditCourt`), and the build refuses to
+ship when the two implementations disagree by more than 0.01 on
+any of them. The trials that selected the terms remain the
+build's own work; what is cross-checked is every number the
+first screen leads with.
