@@ -16,6 +16,7 @@ import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, statSyn
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { boardIssue, buildRadar, dataScript, parseSnapshot } from './lib/model.ts';
+import { auditBoard } from './lib/audit.ts';
 import { buildDossier } from './vendor/makefun-board.ts';
 
 const here = fileURLToPath(new URL('.', import.meta.url));
@@ -46,6 +47,15 @@ if (issue !== null) {
   process.stderr.write(`launch radar v4: the model wrote a board the gate refuses: ${issue}\n`);
   process.exit(1);
 }
+// Double-entry audit: lib/audit.ts re-derives the whole board from
+// the snapshot by a second, independent path. A build that cannot
+// reproduce itself does not ship.
+const audit = auditBoard(snapshot, radar);
+if (audit.ranks_identical !== audit.rows_checked) {
+  process.stderr.write(`launch radar v4: audit failed — the second path reproduces ${audit.ranks_identical} of ${audit.rows_checked} ranks\n`);
+  process.exit(1);
+}
+process.stdout.write(`launch radar v4: audit passed — ${audit.ranks_identical} of ${audit.rows_checked} ranks reproduced by the second path, largest implied drift ${(audit.max_drift * 100).toFixed(3)}%, watchlist ${audit.watchlist_covered} of ${snapshot.watchlist.length}\n`);
 
 mkdirSync(out, { recursive: true });
 writeFileSync(join(out, 'board.json'), `${JSON.stringify({ rows: board })}\n`);

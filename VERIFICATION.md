@@ -46,6 +46,14 @@ ranks are identical and the largest relative drift in implied
 value. On the shipped build: 200 of 200 ranks identical, largest
 drift 0.003% — the residue of the build's whole-dollar rounding.
 
+The build runs the same double-entry check on itself before
+anything is written: `lib/audit.ts` re-derives the board from the
+snapshot by a second, independent implementation of the rules, and
+`main.ts` refuses to produce a dossier when the two paths disagree
+on a single rank. The page's refit is the third implementation of
+the same rules; the three are kept honest by being compared, not
+by being trusted.
+
 Two honest limits. The refit re-derives the board from the shipped
 terms; it does not re-run the ablation court that chose those terms
 (that evidence is printed, not re-executed — see §5). And if a
