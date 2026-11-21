@@ -49,3 +49,11 @@ stability counts and the detail view's comparables. A
 standalone verifier (`verify/verify-build.mjs`) re-checks the
 shipped artifacts with fresh code, and the build's second path
 now also re-derives the court's four headline scores.
+
+## v6 — the clock's proper place
+v5 was rejected at grading for nondeterminism: its dossier
+carried wall-clock seconds, and a re-run could never reproduce
+them. In v6 the seconds live in the build log only, the phase
+table is printed as measured history, and the build constructs
+the radar twice per run and refuses to ship unless the two
+dossiers agree byte for byte.

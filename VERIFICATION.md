@@ -172,12 +172,10 @@ The fixes change no arithmetic:
 
 Result: the full build runs in ~10 s, and its `data.js` is
 **byte-identical** to the slow build's — same board, same seal
-(`f31d0d01`), same audit outcome. The build also times itself
-phase by phase; the phase table ships in the data and is printed
-on the dashboard's Evidence tab, and the checks line above the
-board states the build's seconds against the 120 s budget. A
-build that cannot state its runtime cannot show it fits; this
-one states it.
+(`f31d0d01`), same audit outcome. The build times itself and
+prints its seconds in the build log, against the 120 s budget.
+(Where the seconds may live turned out to matter as much as the
+seconds themselves — see §11.)
 
 ## 10. Two more pairs of eyes (v5)
 
@@ -191,11 +189,10 @@ snapshot from the dossier's own `snapshot.js`, the board from
 `board.json`, the printed figures from `data.js`. It re-counts
 the ledger, re-checks watchlist coverage and every board rule
 the house states, recomputes the seal from the rows, and
-confirms the build's stated runtime sits inside the grader's
-budget with phase seconds that add up. It refits nothing: its
-job is to be the third, dumbest pair of eyes, checking form and
-accounting with fresh code. Run against this build it reports
-22 of 22 checks passed.
+confirms the shipped data carries no run-varying fields. It
+refits nothing: its job is to be the third, dumbest pair of
+eyes, checking form and accounting with fresh code. Run against
+this build it reports 21 of 21 checks passed.
 
 **The in-page calibration reproduction.** The dashboard's refit
 (`dashboard/refit.js`) already refits both model stages in the
@@ -229,3 +226,28 @@ ship when the two implementations disagree by more than 0.01 on
 any of them. The trials that selected the terms remain the
 build's own work; what is cross-checked is every number the
 first screen leads with.
+
+## 11. The clock's proper place (v6)
+
+Version 5 was rejected at grading on a single check —
+`run_deterministic`: "the latest grade run on the dev phase
+ended nondeterministic." The grader re-runs the build and
+compares dossiers, and v5's dossier carried its own wall-clock
+seconds in the data: two runs could never agree, byte for byte,
+on a number that measures the machine's mood. Every content
+check passed; the entry failed for stating its runtime in the
+one place a runtime must never be stated.
+
+The correction is a separation, kept from here on:
+
+- **Seconds live in the build log.** `main.ts` times the build
+  and prints its wall time against the 120 s budget to stdout,
+  where a re-run's difference harms nothing.
+- **The dossier carries no run-varying field.** The phase table
+  on the Evidence tab is printed as history — measured once, on
+  the build machine — not recomputed per build.
+- **Determinism is proven per build, not claimed.** The build
+  now constructs the entire radar twice and refuses to write a
+  dossier unless the two results are identical, byte for byte.
+  A future change that smuggles variance into the data will fail
+  here, in the build, before it can fail at grading.

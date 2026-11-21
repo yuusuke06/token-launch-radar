@@ -1,4 +1,4 @@
-// Launch Radar v5 — the build-time audit.
+// Launch Radar v6 — the build-time audit.
 //
 // Double-entry bookkeeping for the build. lib/model.ts produces the
 // board one way; this module produces it a second way, from the raw

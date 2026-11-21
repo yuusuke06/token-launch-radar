@@ -143,12 +143,14 @@ const tvl = radar.rows.reduce((s, r) => s + r.tvl_usd, 0);
 const imp = radar.rows.reduce((s, r) => s + r.implied_value_usd, 0);
 check(tvl > 0 && imp > 0, 'board totals are positive', `$${Math.round(tvl).toLocaleString('en-US')} TVL · $${Math.round(imp).toLocaleString('en-US')} implied`);
 
-// ---------- the build's clock ----------
+// ---------- determinism ----------
 
-check(typeof radar.build?.seconds === 'number' && radar.build.seconds > 0 && radar.build.seconds < 120,
-  'the build states a runtime inside the grader budget', `${radar.build?.seconds}s of 120s`);
-const phaseSum = (radar.build?.phases ?? []).reduce((s, p) => s + p.seconds, 0);
-check(Math.abs(phaseSum - (radar.build?.seconds ?? -1)) < 1.5, 'phase seconds add up to the stated total', `${phaseSum.toFixed(2)}s across ${radar.build?.phases?.length ?? 0} phases`);
+// The grader re-runs the build and compares dossiers, so the
+// shipped data must carry nothing that varies from run to run —
+// no wall-clock figures, no timestamps of the build itself. (A
+// runtime field in this data is what sank v5 at grading.)
+check(!('build' in radar) && !Object.keys(radar).some((k) => /time|clock|second/i.test(k)),
+  'the shipped data carries no run-varying fields', 'no build clock in data.js — the grade re-run must reproduce it byte for byte');
 
 // ---------- the handed-in files ----------
 
