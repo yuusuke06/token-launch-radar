@@ -1,5 +1,5 @@
 'use strict';
-// Launch Radar v4 — the in-page refit.
+// Launch Radar v5 — the in-page refit.
 //
 // This file is the dashboard's second opinion about itself. The
 // board it renders was produced at build time by lib/model.ts; here,

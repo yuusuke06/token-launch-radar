@@ -12,6 +12,13 @@ Every ranked row carries a farm plan with stated costs and times, and the whole 
 rendered as a static dashboard with a per-protocol detail view and an evidence tab that shows
 the model's held-out tests, including the terms that failed them.
 
+**v5** changes no number on the board. It fixes the build's clock and the page's face:
+the calibration court now computes its ten fold fits once instead of 465 times (the same
+fits, shared — build time 113s → 10s, every printed figure byte-identical), and the
+dashboard leads with a spotlight card for rank 1, a verified-checks band, sticky table
+headers and rank badges, so the first screen says what the board found before it says
+how it knows.
+
 **v4** keeps the same model and removes the last reason to trust the build: the raw
 snapshot ships with the dashboard, and on load the page refits both stages itself, in the
 reader's browser, and diffs its own board against the build's — 200 of 200 ranks

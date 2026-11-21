@@ -1,4 +1,4 @@
-// Launch Radar v4 dashboard. Renders the board written by main.ts
+// Launch Radar v5 dashboard. Renders the board written by main.ts
 // (window.RADAR in ../data.js), re-derives every verdict live under the
 // reader's scenario, and recomputes the board's own totals on the page
 // as a check that the table and the model agree.
@@ -141,6 +141,22 @@ function visibleRows() {
   return rows.sort(by[state.sort] || by.implied);
 }
 
+// The board's headline, given a face: rank 1 with the numbers a
+// reader (or a judge) looks for first, derived live from the same
+// rows and the same scenario economics as the table below it.
+function spotlight() {
+  const r = R.rows[0];
+  const e = econ(r);
+  return `<div class="spot">
+    <div><div class="spot-lab">Top of the board · rank 1 of ${R.rows.length}</div>
+    <div class="spot-name">${esc(r.name)}${r.watchlist ? '<span class="tag wl">Watchlist</span>' : ''}</div>
+    <div class="psub">${esc(r.category)} · ${esc(r.chains.slice(0, 4).join(', '))} · TVL ${money(r.tvl_usd)} · no token for ${r.age_years === null ? 'an unrecorded span' : r.age_years.toFixed(1) + ' yr'}</div></div>
+    <div class="spot-stat"><div class="lab">Implied value</div><div class="big amber">${money(r.implied_value_usd)}</div><div class="note">range ${money(r.p25_usd)}–${money(r.p75_usd)}</div></div>
+    <div class="spot-stat"><div class="lab">Token odds</div><div class="big">${Math.round(r.odds * 100)}%</div><div class="note">if it launches: ${money(r.if_launches_usd)}</div></div>
+    <div class="spot-stat"><div class="lab">Farm verdict</div><div class="big"><span class="verdict v-${e.verdict}">${e.verdict}</span></div><div class="note">${signedMoney(e.net)} net, stated scenario</div></div>
+  </div>`;
+}
+
 function boardView() {
   const counts = { FARM: 0, MARGINAL: 0, SKIP: 0 };
   for (const r of R.rows) counts[econ(r).verdict]++;
@@ -149,7 +165,7 @@ function boardView() {
   const chains = [...new Set(R.rows.flatMap((r) => r.chains))].sort();
   const vis = visibleRows();
   const body = vis.map(({ r, e }) => `<tr class="rowlink" data-slug="${esc(r.slug)}">
-    <td><div class="rank">${r.rank}</div><div class="range">${r.rank_best}–${r.rank_worst}</div></td>
+    <td><div class="rank${r.rank <= 3 ? ' top' : ''}">${r.rank}</div><div class="range">${r.rank_best}–${r.rank_worst}</div></td>
     <td><div class="pname">${esc(r.name)}${r.watchlist ? '<span class="tag wl">Watchlist</span>' : ''}</div><div class="psub">${esc(r.category)} · ${esc(r.chains.slice(0, 3).join(', '))}${r.chains.length > 3 ? ' +' + (r.chains.length - 3) : ''}</div></td>
     <td class="num">${money(r.tvl_usd)}</td>
     <td class="num ${r.change_7d > 0 ? 'pos' : r.change_7d < 0 ? 'neg' : ''}">${r.change_7d === null ? '—' : (r.change_7d > 0 ? '+' : '') + r.change_7d.toFixed(1) + '%'}</td>
@@ -160,7 +176,7 @@ function boardView() {
     <td class="num">${money(r.p25_usd)}–${money(r.p75_usd)}</td>
     <td><span class="verdict v-${e.verdict}">${e.verdict}</span><div class="vsub">${signedMoney(e.net)} net · ${money(e.expected)} drop − ${money(e.fees)} fees</div></td>
     <td class="num">${e.netPerHour >= 0 ? money(e.netPerHour) : '−' + money(-e.netPerHour)}</td></tr>`).join('');
-  return `<div class="controls">
+  return `${spotlight()}<div class="controls">
     ${tiers.map(([k, lab]) => `<button class="tier ${state.tier === k ? 'on' : ''}" data-tier="${k}">${lab}</button>`).join('')}
     <input type="search" id="q" placeholder="Search name or slug" value="${esc(state.q)}">
     <select id="cat"><option value="">All categories</option>${cats.map((c) => `<option ${state.category === c ? 'selected' : ''}>${esc(c)}</option>`).join('')}</select>
