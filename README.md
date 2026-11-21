@@ -7,58 +7,48 @@
 A token launch radar, built for make.fun's [token-radar-01](https://make.fun/c/token-radar-01) bounty.
 
 It reads one sealed DefiLlama snapshot (758 protocols, TVL at or above $5M, as of 2026-11-14),
-finds the protocols that have not launched a token yet, and ranks them by implied launch value.
-Every ranked row carries a farm plan with stated costs and times, and the whole board is rendered
-as a static dashboard with a per-protocol detail view.
+finds the protocols that record no token yet, and ranks 200 of them by implied launch value.
+Every ranked row carries a farm plan with stated costs and times, and the whole board is
+rendered as a static dashboard with a per-protocol detail view and an evidence tab that shows
+the model's held-out tests, including the terms that failed them.
 
 ## The model
 
-Nothing is hand-priced and no protocol name is special-cased. At run time the program fits its
-value model on the snapshot's own token-bearing protocols (the 119 non-exchange protocols that
-record both a TVL and a market cap):
+Implied value is a product of two fitted stages. Nothing is hand-priced and no protocol name
+is special-cased; both stages are fitted on the snapshot itself at run time.
 
-- a least-squares line `ln(mcap) = 7.7881 + 0.4721 * ln(TVL)`;
-- each category's median mcap/TVL multiple, shrunk toward the global median (0.246x) by `n/(n+6)`;
-- the implied value is the geometric mean of the regression value and the category value, times
-  a growth factor whose beta (-0.9) is fitted from the comparables' residuals (in this snapshot a
-  hot week of TVL growth is priced at a discount, so the radar does not pay up for it), times a
-  maturity factor fitted per age band.
+**Stage 1 — token odds.** A regularised logistic fit on the 465 protocols that are not
+wrapped, staked, bridged or exchange products, where the outcome (a token symbol or Gecko id
+on the record) is known for every peer. Kept terms: ln(TVL), ln(1 + age), 7-day TVL growth
+and protocol family. Ten-fold Brier 0.195 against 0.247 for the base rate; a time split
+(fit before 2025, score the rest) gives 0.230 against 0.373.
 
-The fit is validated by split halves: each half's model predicts the other half. Held-out rank
-correlation 0.37, median error x3.74. Launch values are fat-tailed, so the board is presented as
-a ranking, not a price list, and the dashboard says so.
+**Stage 2 — value if it launches.** A log-log fit on the 119 priced, non-exchange
+comparables: a size curve in ln(TVL) plus an age term. Leave-one-out median miss ×3.25 and
+walk-forward ×3.04, against ×4.88 for the snapshot's flat median multiple of 0.246×.
 
-Bridge and Canonical Bridge rows are not ranked: their TVL is other chains' assets in transit,
-and there is no launch to price. They remain in the universe and the comparables.
+**The court every term faces.** Each candidate term is kept only if it lowers the held-out
+error in both of its stage's tests. Rejected, and printed on the dashboard's evidence tab:
+chain count (odds), family and category multipliers (value), and growth (value). Listing
+dates are missing for 113 of the 758 protocols; those rows enter the fits with the dated
+rows' median age, and the time-based tests run on dated rows only.
 
-## The board
+**Ranges.** Each row's P25–P75 is the value range implied by the value stage's leave-one-out
+residuals — 51% of held-out caps fell inside the stated 50% range, 82% inside the stated 80%
+range. Rank ranges are interquartile ranks over 150 bootstrap refits of the value stage.
 
-246 pre-token protocols: all 40 watchlist protocols plus every other rankable pre-token protocol
-in the snapshot. Each row's farm plan is generated from its own record: category selects the
-actions, first chain the gas costs, TVL the capital, age the cadence and the hold.
+**Farm economics.** Under the page's default scenario the drop is 5% of implied value shared
+pro-rata across all deposits, the plan deposit is 0.02% of TVL (min $500, max $100,000), and
+gas at $2.57 per transaction is the only cost charged. Verdicts: FARM 52, MARGINAL 124,
+SKIP 24 — and they move with the scenario sliders, which re-derive every verdict live.
 
-## Run it
+## Running it
 
-Node 22, standard library only:
-
-```sh
-mkdir -p out
-MAKEFUN_OUTPUT_DIR=out node main.ts --input <path-to-snapshot.json>
+```
+mkdir -p out && MAKEFUN_OUTPUT_DIR=out node main.ts --input <snapshot.json>
 ```
 
-Writes `board.json`, `data.js`, `dashboard/`, `screenshots/` and `dossier.json` to the output
-directory. The dashboard is plain HTML/CSS/JS with no network calls; open
-`dashboard/index.html` next to the generated `data.js`.
-
-## Layout
-
-- `main.ts` — the entry point: read the snapshot, fit, rank, write the outputs.
-- `lib/model.ts` — the fitted model, the board, the farm-plan generator, the gate self-check.
-- `dashboard/` — the page the judge reads: board, detail, live comparables, method.
-- `screenshots/` — three photographs of the dashboard as the program renders it.
-- `vendor/makefun-board.ts` — make.fun's dossier library, vendored verbatim.
-
-MIT licensed. Built by an AI agent (Muse) working for [@yuusuke06](https://github.com/yuusuke06);
-the full session transcripts ship with the entry, as the competition requires.
-
-Referral: if you build on make.fun too, [this link](https://make.fun/r/jcnyznqs) credits the account that built this radar.
+Node 22, standard library only. The run writes `board.json` (the ranked board),
+`data.js` (the same board for the page), the dashboard, the screenshots and `dossier.json`.
+Open `out/dashboard/index.html` for the board; `?shot=evidence` and
+`?shot=detail&slug=steakhouse-financial` select the other two handed-in views.
