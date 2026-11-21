@@ -84,3 +84,54 @@ not this entry's, and the kit seals it for every entrant alike.
 The farm economics are likewise stated assumptions with their
 arithmetic exposed, not measurements: change the drop share or the
 plan size and the verdicts move, in the open, on the page.
+
+## 7. A worked example: rank 1 by hand
+
+Every number on the board can be recomputed from the printed
+coefficients. Rank 1, Steakhouse Financial, with nothing but the
+snapshot row and a pocket calculator:
+
+Snapshot row: TVL $2,753,981,495 · listed 2025-05-20 (1.487 years
+before the snapshot) · 7-day change −2.19% · category Risk
+Curators (family: Curators).
+
+Launch odds (logistic; weights in feature order — intercept, size,
+age, growth, then the family effects):
+
+    size    = (ln 2,753,981,495 − 17) / 2 = 2.368
+    age     = ln(1 + 1.487) − 1.5         = −0.589
+    growth  = −2.19% / 10                 = −0.219
+    z = 0.612 + 0.509×2.368 + 1.312×(−0.589)
+              − 0.466×(−0.219) − 1.116   (Curators)
+      = 0.030
+    odds = 1 / (1 + e^−z) = 50.8%   → the board prints 51%
+
+Value if it launches (OLS on log market cap; intercept, size
+curve, age):
+
+    ln value = 8.820 + 0.456×21.736 − 0.601×0.911 = 18.182
+    value = e^18.182 ≈ $79.3M       → the board prints $79.3M
+
+Implied value:
+
+    0.508 × $79.3M ≈ $40.3M         → the board prints $40.3M
+
+The other 199 rows are the same arithmetic with their own rows of
+the snapshot. The coefficients themselves are printed in the data
+file the page ships (`odds.weights`, `value.beta`), so this
+example can be re-derived from the entry alone — and §4's refit
+recomputes all 200 rows, not just this one, on every page load.
+
+## 8. Reproducing the build
+
+    node main.ts --input <path to the kit's snapshot.json>
+
+`main.ts` (Node 22, standard library only) parses the sealed
+snapshot, classifies the ledger, runs the ablation court, fits the
+two stages, and writes `board.json`, `data.js`, `snapshot.js`, the
+dashboard and `dossier.json` into the output directory. There is
+no randomness anywhere in the build: the one resampling procedure
+(the bootstrap behind the rank ranges) runs on a seeded generator
+with a fixed seed, so two runs of the same snapshot produce the
+same board, the same seal, and the same dossier, byte for byte in
+every field that reaches the page.
