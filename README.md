@@ -12,6 +12,12 @@ Every ranked row carries a farm plan with stated costs and times, and the whole 
 rendered as a static dashboard with a per-protocol detail view and an evidence tab that shows
 the model's held-out tests, including the terms that failed them.
 
+**v3** keeps the v2 model — it survived its own tests — and deepens the evidence around it:
+out-of-fold calibration of the odds, split-half range honesty (older vs newer tokens), a
+board seal the page recomputes and compares with the build's, the nearest priced comparables
+on every detail view, and three more refused terms, among them the ridge category effect
+several rivals ship and a placebo control in each stage.
+
 ## The model
 
 Implied value is a product of two fitted stages. Nothing is hand-priced and no protocol name
@@ -29,7 +35,10 @@ walk-forward ×3.04, against ×4.88 for the snapshot's flat median multiple of 0
 
 **The court every term faces.** Each candidate term is kept only if it lowers the held-out
 error in both of its stage's tests. Rejected, and printed on the dashboard's evidence tab:
-chain count (odds), family and category multipliers (value), and growth (value). Listing
+chain count (odds), family and category multipliers (value), and growth (value). v3 put
+three more in the dock: a ridge-shrunk category effect (walk-forward ×2.38 but leave-one-out
+×3.44 — one test is not enough) and a placebo control in each stage, the next protocol's
+numbers, which must not help and did not. Listing
 dates are missing for 113 of the 758 protocols; those rows enter the fits with the dated
 rows' median age, and the time-based tests run on dated rows only.
 
@@ -50,5 +59,5 @@ mkdir -p out && MAKEFUN_OUTPUT_DIR=out node main.ts --input <snapshot.json>
 
 Node 22, standard library only. The run writes `board.json` (the ranked board),
 `data.js` (the same board for the page), the dashboard, the screenshots and `dossier.json`.
-Open `out/dashboard/index.html` for the board; `?shot=evidence` and
-`?shot=detail&slug=steakhouse-financial` select the other two handed-in views.
+Open `out/dashboard/index.html` for the board; `?shot=evidence`,
+`?shot=detail&slug=steakhouse-financial` and `?shot=watchlist` select the other handed-in views.

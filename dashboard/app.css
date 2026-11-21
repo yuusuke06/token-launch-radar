@@ -37,6 +37,10 @@ td { border-bottom: 1px solid var(--line); }
 .num { text-align: right; font-variant-numeric: tabular-nums; }
 .pos { color: var(--teal); } .neg { color: var(--rose); }
 .kept { color: var(--teal); font-weight: 600; } .rej { color: var(--faint); }
+.strip { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 14px; }
+.strip .panel { margin-top: 0; }
+.strip p { margin: 8px 0 0; font-size: 12.5px; }
+@media (max-width: 900px) { .strip { grid-template-columns: 1fr; } }
 .tabs { display: flex; gap: 8px; margin: 18px 0 0; }
 .tab { background: var(--panel); color: var(--dim); border: 1px solid var(--line); border-radius: 7px; padding: 7px 14px; cursor: pointer; font-size: 13px; }
 .tab.on { color: var(--ink); border-color: var(--amber); }
