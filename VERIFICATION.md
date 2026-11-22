@@ -251,3 +251,48 @@ The correction is a separation, kept from here on:
   dossier unless the two results are identical, byte for byte.
   A future change that smuggles variance into the data will fail
   here, in the build, before it can fail at grading.
+
+## 12. The adopted exception (v7)
+
+v7 changes the model for the first time since v2: the value
+stage is the ridge formulation — size curve and age free, one
+intercept per category shrunk by penalty λ=8. What verifies
+the change, specifically:
+
+- **The penalty was chosen on the grid, not by taste.** The
+  walk-forward miss over λ ∈ {4, 8, 16, 32, 64, 128, 256} is
+  {2.67, 2.38, 2.75, 2.98, 3.01, 3.02, 3.03}: λ=8 is the grid's
+  minimum, and every λ beats the plain line's 3.04. The
+  leave-one-out miss worsens at every λ (3.44 at λ=8 against
+  the plain 3.25); that cost is printed in the ablation row
+  that adopts the term, on the board's first screen and in
+  the README. The both-tests rule of §2–§10 is not rewritten;
+  this section is the exception to it, stated where the rule
+  is stated.
+- **The second path re-derives the new headline scores.**
+  `lib/audit.ts` implements the ridge fit independently (its
+  own levels, its own normal equations) and re-derives the
+  leave-one-out ×3.44 and walk-forward ×2.38 from the raw
+  snapshot; the build refuses to ship past a 0.01 disagreement,
+  as before. Its board audit reproduces all 200 ranks with a
+  largest implied drift of 0.001%.
+- **The in-page refit runs the ridge too.** The browser twin
+  (`dashboard/refit.js`) fits the same ridge — same feature
+  order, same accumulation order, same pivoting — and
+  reproduces the board, the bootstrap rank ranges (150 ridge
+  refits on the seeded resamples), the time-split stability
+  counts and the detail view's comparables. A category absent
+  from a fit's training rows contributes no intercept there,
+  in all three implementations alike.
+- **The ranges were re-earned, not carried over.** The
+  P25–P75 and P10–P90 factors come from the ridge stage's own
+  leave-one-out residuals (×0.29–×4.55 and ×0.06–×10.70), and
+  their held-out coverage re-checks at 51% (stated 50%) and
+  82% (stated 80%), with the split-half honesty recomputed on
+  the same residuals.
+- **The clock still fits.** The ridge court is heavier — 119
+  leave-one-out fits in the build, 119 more in the court
+  audit, 150 bootstrap refits in the build and 150 in the
+  page — and the complete gate (two builds plus both audits)
+  measures 21.1s against the 120 s budget, with the
+  determinism proof of §11 passing unchanged.

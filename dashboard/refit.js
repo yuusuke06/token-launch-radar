@@ -1,5 +1,5 @@
 'use strict';
-// Launch Radar v6 — the in-page refit.
+// Launch Radar v7 — the in-page refit.
 //
 // This file is the dashboard's second opinion about itself. The
 // board it renders was produced at build time by lib/model.ts; here,
@@ -12,8 +12,10 @@
 //
 // What the refit covers: the ledger classification, the top-200
 // board set, the launch-odds fit (logistic, gradient descent,
-// L2 lambda 3, 3000 iterations), the if-it-launches fit (OLS on log
-// market cap), the implied values and the ranks — and, since v5,
+// L2 lambda 3, 3000 iterations), the if-it-launches fit (ridge
+// regression on log market cap: size curve and age free, one
+// intercept per category shrunk by the published penalty), the
+// implied values and the ranks — and, since v5,
 // the out-of-fold calibration bins: the same ten fold fits the
 // build ran, each peer scored by the fit that never saw its fold,
 // binned in fifths and compared with the printed bins. What it
@@ -26,10 +28,12 @@
 // on stated assumptions, recomputed live by app.js itself on every
 // slider move).
 //
-// If a future model ever keeps group multipliers (category or family
-// effects in the value stage), this refit refuses to run rather than
-// fake a match: window.REFIT stays null and the checks line says the
-// refit is unavailable in this copy.
+// If a future model ever keeps group multipliers (unshrunk
+// category or family effects in the value stage), this refit
+// refuses to run rather than fake a match: window.REFIT stays null
+// and the checks line says the refit is unavailable in this copy.
+// The ridge formulation v7 ships is implemented below, not refused:
+// shrinkage is part of the fit, not a multiplier bolted onto it.
 window.REFIT = (() => {
   const R = window.RADAR;
   if (typeof window.SNAPSHOT === 'undefined' || !R) return null;
@@ -146,57 +150,30 @@ function refitBoard(S, R) {
     calib = { bins: 5, match };
   }
 
-  // --- stage two: value if it launches, OLS on the 119 comparables
+  // --- stage two: value if it launches, the ridge fit on the 119
+  // comparables. One parameterised fit, so the headline fit and the
+  // two reproductions below (bootstrap resamples, time-split refit)
+  // run the identical procedure the build runs — each with its own
+  // median-age fill and its own category levels, taken from its own
+  // rows, exactly as the build's fitValueRidge does. A protocol
+  // whose category is absent from the training rows gets no dummy:
+  // it is priced by the size curve and age alone, which is what the
+  // shrinkage means for a category with no priced history.
   const comps = pricedComp.filter((p) => p.category !== 'CEX');
-  const vFill = ageFill(comps);
-  const vFeat = (p) => {
-    const f = [1, Math.log(p.tvl_usd)];
-    if (R.value.terms.includes('age')) f.push(ageFeat(p, vFill));
-    if (R.value.terms.includes('growth')) f.push(Math.max(-2, Math.min(10, (p.change_7d ?? 0) / 10)));
-    return f;
-  };
-  const Xv = comps.map(vFeat), yv = comps.map((p) => Math.log(p.mcap_usd));
-  const dv = Xv[0].length;
-  const A = Array.from({ length: dv }, () => new Array(dv).fill(0)), b = new Array(dv).fill(0);
-  for (let i = 0; i < Xv.length; i++) for (let j = 0; j < dv; j++) {
-    b[j] += Xv[i][j] * yv[i];
-    for (let k = 0; k < dv; k++) A[j][k] += Xv[i][j] * Xv[i][k];
-  }
-  for (let j = 0; j < dv; j++) A[j][j] += 1e-4;
-  for (let c = 0; c < dv; c++) {
-    let piv = c;
-    for (let r = c + 1; r < dv; r++) if (Math.abs(A[r][c]) > Math.abs(A[piv][c])) piv = r;
-    [A[c], A[piv]] = [A[piv], A[c]]; [b[c], b[piv]] = [b[piv], b[c]];
-    for (let r = 0; r < dv; r++) {
-      if (r === c) continue;
-      const f = A[r][c] / A[c][c];
-      for (let k = c; k < dv; k++) A[r][k] -= f * A[c][k];
-      b[r] -= f * b[c];
-    }
-  }
-  const beta = b.map((v, j) => v / A[j][j]);
-  const value = (p) => Math.exp(vFeat(p).reduce((s, v, j) => s + v * beta[j], 0));
-
-  // The same OLS, parameterised by its rows, for the two
-  // reproductions below (bootstrap resamples and the time-split
-  // refit). Each call takes its own median-age fill from its own
-  // rows, exactly as the build's fitValue does.
   const fitValue = (rows) => {
     const fill = ageFill(rows);
+    const levels = [...new Set(rows.map((p) => p.category))];
     const feat = (p) => {
-      const f = [1, Math.log(p.tvl_usd)];
-      if (R.value.terms.includes('age')) f.push(ageFeat(p, fill));
-      if (R.value.terms.includes('growth')) f.push(Math.max(-2, Math.min(10, (p.change_7d ?? 0) / 10)));
+      const f = [1, Math.log(p.tvl_usd), ageFeat(p, fill)];
+      for (const lv of levels) f.push(p.category === lv ? 1 : 0);
       return f;
     };
     const Xr = rows.map(feat), yr = rows.map((p) => Math.log(p.mcap_usd));
     const dr = Xr[0].length;
     const Ar = Array.from({ length: dr }, () => new Array(dr).fill(0)), br = new Array(dr).fill(0);
-    for (let i = 0; i < Xr.length; i++) for (let j = 0; j < dr; j++) {
-      br[j] += Xr[i][j] * yr[i];
-      for (let k = 0; k < dr; k++) Ar[j][k] += Xr[i][j] * Xr[i][k];
-    }
-    for (let j = 0; j < dr; j++) Ar[j][j] += 1e-4;
+    for (let i = 0; i < Xr.length; i++) for (let j = 0; j < dr; j++) { br[j] += Xr[i][j] * yr[i]; for (let k = 0; k < dr; k++) Ar[j][k] += Xr[i][j] * Xr[i][k]; }
+    for (let j = 0; j < 3; j++) Ar[j][j] += 1e-4;
+    for (let j = 3; j < dr; j++) Ar[j][j] += R.value.lambda;
     for (let c = 0; c < dr; c++) {
       let piv = c;
       for (let r = c + 1; r < dr; r++) if (Math.abs(Ar[r][c]) > Math.abs(Ar[piv][c])) piv = r;
@@ -211,6 +188,7 @@ function refitBoard(S, R) {
     const bt = br.map((v, j) => v / Ar[j][j]);
     return (p) => Math.exp(feat(p).reduce((s, v, j) => s + v * bt[j], 0));
   };
+  const value = fitValue(comps);
 
   // --- the rank ranges, reproduced: 150 bootstrap refits of the
   // value stage on resampled comparables (the build's seeded

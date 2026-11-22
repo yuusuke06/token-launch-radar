@@ -1,4 +1,4 @@
-// Launch Radar v6 — the build-time audit.
+// Launch Radar v7 — the build-time audit.
 //
 // Double-entry bookkeeping for the build. lib/model.ts produces the
 // board one way; this module produces it a second way, from the raw
@@ -101,10 +101,39 @@ function refitOdds(snapshot: Snapshot, terms: string[]): (p: Protocol) => number
   return fitOddsOn(snapshot.as_of, snapshot.protocols.filter((p) => !houseExcluded(p)), terms);
 }
 
-// Refit the value stage on a given set of training rows: OLS on
-// log market cap, the median-age fill taken from the rows.
-function fitValueOn(asOf: string, comps: Protocol[], terms: string[]): (p: Protocol) => number {
+// Refit the value stage on a given set of training rows. When the
+// build's published terms carry the ridge formulation (v7), this is
+// the ridge fit: size curve and age free, one intercept per category
+// shrunk by the published penalty — the same normal equations, the
+// same accumulation order and the same pivoting as the model's own
+// fitValueRidge, re-implemented here so the two paths share no code.
+// Otherwise it is OLS on log market cap, the median-age fill taken
+// from the rows.
+function fitValueOn(asOf: string, comps: Protocol[], terms: string[], lambda = 8): (p: Protocol) => number {
   const fill = ageFill(asOf, comps);
+  if (terms.includes('category-ridge')) {
+    const levels = [...new Set(comps.map((p) => p.category))];
+    const feats = (p: Protocol): number[] => {
+      const f = [1, Math.log(p.tvl_usd), ageFeat(asOf, p, fill)];
+      for (const lv of levels) f.push(p.category === lv ? 1 : 0);
+      return f;
+    };
+    const X = comps.map(feats);
+    const y = comps.map((p) => Math.log(p.mcap_usd!));
+    const d = X[0]!.length;
+    const A = Array.from({ length: d }, () => new Array<number>(d).fill(0));
+    const b = new Array<number>(d).fill(0);
+    for (let i = 0; i < X.length; i++) for (let j = 0; j < d; j++) { b[j]! += X[i]![j]! * y[i]!; for (let k = 0; k < d; k++) A[j]![k]! += X[i]![j]! * X[i]![k]!; }
+    for (let j = 0; j < 3; j++) A[j]![j]! += 1e-4;
+    for (let j = 3; j < d; j++) A[j]![j]! += lambda;
+    for (let c = 0; c < d; c++) {
+      let piv = c; for (let r = c + 1; r < d; r++) if (Math.abs(A[r]![c]!) > Math.abs(A[piv]![c]!)) piv = r;
+      [A[c], A[piv]] = [A[piv]!, A[c]!]; [b[c], b[piv]] = [b[piv]!, b[c]!];
+      for (let r = 0; r < d; r++) { if (r === c) continue; const f = A[r]![c]! / A[c]![c]!; for (let k = c; k < d; k++) A[r]![k]! -= f * A[c]![k]!; b[r]! -= f * b[c]!; }
+    }
+    const beta = b.map((v, j) => v / A[j]![j]!);
+    return (p) => Math.exp(feats(p).reduce((s, v, j) => s + v * beta[j]!, 0));
+  }
   const feats = (p: Protocol): number[] => {
     const f = [1, Math.log(p.tvl_usd)];
     if (terms.includes('age')) f.push(ageFeat(asOf, p, fill));
@@ -137,8 +166,8 @@ function fitValueOn(asOf: string, comps: Protocol[], terms: string[]): (p: Proto
   return (p) => Math.exp(feats(p).reduce((s, v, j) => s + v * beta[j]!, 0));
 }
 
-function refitValue(snapshot: Snapshot, terms: string[]): (p: Protocol) => number {
-  return fitValueOn(snapshot.as_of, snapshot.protocols.filter((p) => priced(p) && p.category !== 'CEX'), terms);
+function refitValue(snapshot: Snapshot, terms: string[], lambda = 8): (p: Protocol) => number {
+  return fitValueOn(snapshot.as_of, snapshot.protocols.filter((p) => priced(p) && p.category !== 'CEX'), terms, lambda);
 }
 
 // The court's headline scores, re-derived by this second path:
@@ -190,14 +219,14 @@ export function auditCourt(snapshot: Snapshot, radar: RadarData): CourtResult {
   const comps = snapshot.protocols.filter((p) => priced(p) && p.category !== 'CEX');
   const errs: number[] = [];
   for (let i = 0; i < comps.length; i++) {
-    const predict = fitValueOn(asOf, comps.filter((_, j) => j !== i), radar.value.terms);
+    const predict = fitValueOn(asOf, comps.filter((_, j) => j !== i), radar.value.terms, radar.value.lambda);
     errs.push(Math.abs(Math.log(comps[i]!.mcap_usd! / predict(comps[i]!))));
   }
   errs.sort((a, b) => a - b);
   const loo = Math.exp(errs[Math.floor(errs.length / 2)]!);
   const datedComps = [...comps].filter((p) => p.listed_at).sort((a, b) => (a.listed_at! < b.listed_at! ? -1 : 1));
   const half = Math.floor(datedComps.length / 2);
-  const wf = missFactor(datedComps.slice(half), fitValueOn(asOf, datedComps.slice(0, half), radar.value.terms));
+  const wf = missFactor(datedComps.slice(half), fitValueOn(asOf, datedComps.slice(0, half), radar.value.terms, radar.value.lambda));
   return {
     cv, ts, loo, wf,
     cv_diff: Math.abs(cv - radar.odds.final_cv),
@@ -223,7 +252,7 @@ export function auditBoard(snapshot: Snapshot, radar: RadarData): AuditResult {
   ranked.sort((a, b) => b.tvl_usd - a.tvl_usd);
   const boardSet = ranked.slice(0, 200);
   const odds = refitOdds(snapshot, radar.odds.terms);
-  const value = refitValue(snapshot, radar.value.terms);
+  const value = refitValue(snapshot, radar.value.terms, radar.value.lambda);
   const mine = boardSet
     .map((p) => ({ slug: p.slug, implied: odds(p) * value(p) }))
     .sort((a, b) => b.implied - a.implied);

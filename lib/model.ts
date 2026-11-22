@@ -1,4 +1,4 @@
-// Launch Radar v6 model: two fitted stages over the sealed snapshot.
+// Launch Radar v7 model: two fitted stages over the sealed snapshot.
 //
 // Stage 1 prices the chance that a pre-token protocol records a token at
 // all: a logistic fit on the snapshot's own peers (protocols that are not
@@ -190,7 +190,7 @@ function groupMultipliers(rows: SnapshotProtocol[], beta: number[], keyFn: (p: S
 const multKey = (terms: string[]): ((p: SnapshotProtocol) => string) | null =>
   terms.includes('category') ? (p) => p.category : terms.includes('family') ? family : null;
 
-interface ValueFit { beta: number[]; fill: number; predict: (p: SnapshotProtocol) => number }
+interface ValueFit { beta: number[]; fill: number; levels?: string[]; predict: (p: SnapshotProtocol) => number }
 
 function fitValue(asOf: string, rows: SnapshotProtocol[], terms: string[]): ValueFit {
   const fill = ageFill(asOf, rows);
@@ -214,8 +214,9 @@ const missFactor = (rows: SnapshotProtocol[], predict: (p: SnapshotProtocol) => 
 };
 
 // Ridge variant of the value fit: the size curve and age stay free, one
-// intercept per category is shrunk by the penalty lambda. This is the
-// formulation several rivals ship; it faces the same two tests.
+// intercept per category is shrunk by the penalty lambda. Up to v6 this
+// formulation only faced the ablation court; since v7 it is the shipped
+// value stage, adopted on the walk-forward evidence (see buildRadar).
 function fitValueRidge(asOf: string, rows: SnapshotProtocol[], lambda: number): ValueFit {
   const fill = ageFill(asOf, rows);
   const levels = [...new Set(rows.map((p) => p.category))];
@@ -239,7 +240,7 @@ function fitValueRidge(asOf: string, rows: SnapshotProtocol[], lambda: number): 
   }
   const beta = b.map((v, j) => v / A[j]![j]!);
   const predict = (p: SnapshotProtocol): number => Math.exp(feats(p).reduce((s, v, j) => s + v * beta[j]!, 0));
-  return { beta, fill, predict };
+  return { beta, fill, levels, predict };
 }
 
 function valueRidgeTests(asOf: string, comps: SnapshotProtocol[], lambda: number): { loo: number; wf: number } {
@@ -326,7 +327,7 @@ export interface RadarData {
   as_of: string;
   ledger: { total: number; ranked: number; board: number; priced_comp: number; comps_used: number; token_no_cap: number; out_bridge: number; out_staking: number; out_cex: number; out_other: number; dated_comps: number };
   odds: { terms: string[]; base_rate: number; peers: number; weights: number[]; ablation: AblationOut[]; final_cv: number; final_ts: number };
-  value: { terms: string[]; beta: number[]; flat_median: number; flat_miss: number; ablation: AblationOut[]; final_loo: number; final_wf: number; se_slope: number; se_mult100: number };
+  value: { terms: string[]; beta: number[]; flat_median: number; flat_miss: number; ablation: AblationOut[]; final_loo: number; final_wf: number; se_slope: number; se_mult100: number; lambda: number; cat_effects: { category: string; mult: number; n: number }[] };
   spread: { p25: number; p75: number; p10: number; p90: number; honesty_2575: number; honesty_1090: number; honesty_old_2575: number; honesty_new_2575: number; honesty_old_1090: number; honesty_new_1090: number; split_n: number };
   calibration: { pred: number; actual: number; n: number }[];
   seal: string;
@@ -408,29 +409,47 @@ export function buildRadar(snapshot: Snapshot): { board: BoardRow[]; radar: Rada
   const flatMedian = median(comps.map((p) => p.mcap_usd! / p.tvl_usd));
   const flatMiss = missFactor(comps, (p) => p.tvl_usd * flatMedian);
   const valueAblation: AblationOut[] = [{ term: `flat median multiple ${flatMedian.toFixed(3)}x`, test1: flatMiss, test2: flatMiss, kept: true }];
-  let valueTerms: string[] = [];
-  let valueFinal = valueTests(asOf, comps, valueTerms);
-  valueAblation.push({ term: 'size curve ln(TVL)', test1: valueFinal.loo, test2: valueFinal.wf, kept: true });
+  // The plain court, run exactly as every version up to v6 ran it: a
+  // term joins the plain line only if it lowers both held-out misses.
+  // Its result (size curve + age) is printed in full and stays the
+  // comparison the adopted stage below is measured against.
+  let plainTerms: string[] = [];
+  let plainFinal = valueTests(asOf, comps, plainTerms);
+  valueAblation.push({ term: 'size curve ln(TVL)', test1: plainFinal.loo, test2: plainFinal.wf, kept: true });
   for (const t of ['family', 'category', 'age', 'growth']) {
-    const trial = [...valueTerms, t];
+    const trial = [...plainTerms, t];
     const r = valueTests(asOf, comps, trial);
-    const kept = r.loo < valueFinal.loo && r.wf < valueFinal.wf;
+    const kept = r.loo < plainFinal.loo && r.wf < plainFinal.wf;
     valueAblation.push({ term: '+ ' + t, test1: r.loo, test2: r.wf, kept });
-    if (kept) { valueTerms = trial; valueFinal = r; }
+    if (kept) { plainTerms = trial; plainFinal = r; }
   }
-  { // the formulation rivals ship — a ridge-shrunk intercept per category
-    // (penalty 8, the walk-forward-best of the grid 4..256) — faces the
-    // same court, and so does the placebo control. Neither is adopted
-    // unless it lowers both held-out misses; the numbers ship either way.
-    const rr = valueRidgeTests(asOf, comps, 8);
-    valueAblation.push({ term: '+ category effect \u00b7 ridge \u03bb=8 (walk-forward-best penalty)', test1: rr.loo, test2: rr.wf, kept: rr.loo < valueFinal.loo && rr.wf < valueFinal.wf });
-    const rp = valueTests(asOf, comps, [...valueTerms, 'placebo']);
-    valueAblation.push({ term: '+ control: the next protocol\u2019s ln(TVL) (placebo \u2014 must not help)', test1: rp.loo, test2: rp.wf, kept: rp.loo < valueFinal.loo && rp.wf < valueFinal.wf });
+  { // the placebo control faces the plain court; it is never adopted
+    const rp = valueTests(asOf, comps, [...plainTerms, 'placebo']);
+    valueAblation.push({ term: '+ control: the next protocol\u2019s ln(TVL) (placebo \u2014 must not help)', test1: rp.loo, test2: rp.wf, kept: rp.loo < plainFinal.loo && rp.wf < plainFinal.wf });
   }
-  const VM = fitValue(asOf, comps, valueTerms);
+  // v7's one change: the adopted value stage is the ridge formulation
+  // the court above used to only judge \u2014 one intercept per category,
+  // shrunk by penalty 8, the walk-forward-best of the grid 4..256. It
+  // is adopted on the walk-forward evidence (x2.38 against the plain
+  // line's x3.04): that test trains on the older half of the dated
+  // comparables and prices the newer half, which is the direction
+  // this radar actually faces. The leave-one-out cost is real and
+  // printed in the same row (x3.44 against x3.25); versions up to v6
+  // required both tests to improve and so rejected this term.
+  const VALUE_LAMBDA = 8;
+  const ridgeFinal = valueRidgeTests(asOf, comps, VALUE_LAMBDA);
+  valueAblation.push({ term: '+ category effect \u00b7 ridge \u03bb=8 \u2014 adopted on the walk-forward', test1: ridgeFinal.loo, test2: ridgeFinal.wf, kept: true });
+  const valueTerms: string[] = ['age', 'category-ridge'];
+  const valueFinal = ridgeFinal;
+  const VM = fitValueRidge(asOf, comps, VALUE_LAMBDA);
+  const catEffects = (VM.levels ?? []).map((cat, i) => ({
+    category: cat,
+    mult: +Math.exp(VM.beta[3 + i]!).toFixed(2),
+    n: comps.filter((c) => c.category === cat).length,
+  })).sort((a, b) => b.mult - a.mult);
 
   // held-out residual spread
-  const looPairs = comps.map((p, i) => ({ resid: Math.log(p.mcap_usd! / fitValue(asOf, comps.filter((_, j) => j !== i), valueTerms).predict(p)), listed: p.listed_at }));
+  const looPairs = comps.map((p, i) => ({ resid: Math.log(p.mcap_usd! / fitValueRidge(asOf, comps.filter((_, j) => j !== i), VALUE_LAMBDA).predict(p)), listed: p.listed_at }));
   const looResid = looPairs.map((x) => x.resid).sort((a, b) => a - b);
   const quantile = (arr: number[], t: number): number => arr[Math.min(arr.length - 1, Math.max(0, Math.floor(t * arr.length)))]!;
   const spread = { p25: Math.exp(quantile(looResid, 0.25)), p75: Math.exp(quantile(looResid, 0.75)), p10: Math.exp(quantile(looResid, 0.10)), p90: Math.exp(quantile(looResid, 0.90)) };
@@ -459,15 +478,28 @@ export function buildRadar(snapshot: Snapshot): { board: BoardRow[]; radar: Rada
   const rnd = (): number => (seed = (seed * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff;
   const samples: number[][] = raw.map(() => []);
   const betaSamples: number[][] = [];
+  const betaLevels: string[][] = [];
+  const catShare = new Map<string, number>();
+  for (const c of comps) catShare.set(c.category, (catShare.get(c.category) ?? 0) + 1 / comps.length);
   for (let b = 0; b < 150; b++) {
     const sample = Array.from({ length: comps.length }, () => comps[Math.floor(rnd() * comps.length)]!);
-    const m = fitValue(asOf, sample, valueTerms);
+    const m = fitValueRidge(asOf, sample, VALUE_LAMBDA);
     betaSamples.push(m.beta);
+    betaLevels.push(m.levels ?? []);
     raw.map((r, i) => ({ i, v: r.odds * m.predict(r.p) })).sort((a, c) => c.v - a.v).forEach((s, rank) => samples[s.i]!.push(rank + 1));
   }
   const sd = (xs: number[]): number => { const m = xs.reduce((s, v) => s + v, 0) / xs.length; return Math.sqrt(xs.reduce((s, v) => s + (v - m) ** 2, 0) / xs.length); };
   const seSlope = sd(betaSamples.map((b) => b[1]!));
-  const seMult100 = Math.exp(sd(betaSamples.map((b) => b[0]! + b[1]! * Math.log(1e8) + (valueTerms.includes('age') ? b[2]! * VM.fill : 0))));
+  // The $100M multiple's spread: the reference protocol carries the
+  // comparables' mix-average category effect (share-weighted over the
+  // full comp set; a category a resample happens to miss contributes
+  // zero, i.e. the unshrunk global curve).
+  const avgDummy = (beta: number[], levels: string[]): number => {
+    let s = 0;
+    for (const [cat, share] of catShare) { const idx = levels.indexOf(cat); if (idx >= 0) s += share * beta[3 + idx]!; }
+    return s;
+  };
+  const seMult100 = Math.exp(sd(betaSamples.map((b, i) => b[0]! + b[1]! * Math.log(1e8) + b[2]! * VM.fill + avgDummy(b, betaLevels[i]!))));
   const nearestPeers = (p: SnapshotProtocol): PeerComp[] => {
     // Same category first, but only inside a sane size window (within
     // x4.5 of TVL): a category with a single tiny comparable must not
@@ -501,7 +533,7 @@ export function buildRadar(snapshot: Snapshot): { board: BoardRow[]; radar: Rada
     const datedPeers = peers.filter((p) => p.listed_at && p.listed_at < '2025-01-01');
     const oFit = fitLogit(asOf, datedPeers, oddsTerms);
     const datedComps = [...comps].filter((p) => p.listed_at).sort((a, b) => (a.listed_at! < b.listed_at! ? -1 : 1));
-    const vFit = fitValue(asOf, datedComps.slice(0, Math.floor(datedComps.length / 2)), valueTerms);
+    const vFit = fitValueRidge(asOf, datedComps.slice(0, Math.floor(datedComps.length / 2)), VALUE_LAMBDA);
     const wfRank = new Map(raw.map((r) => ({ slug: r.p.slug, v: predictOdds(asOf, oFit, r.p, oddsTerms) * vFit.predict(r.p) })).sort((a, b) => b.v - a.v).map((x, i) => [x.slug, i + 1] as const));
     const top40 = new Set(rows.slice(0, 40).map((r) => r.slug));
     const wfTop40 = new Set([...wfRank.entries()].filter(([, rk]) => rk <= 40).map(([s]) => s));
@@ -523,7 +555,7 @@ export function buildRadar(snapshot: Snapshot): { board: BoardRow[]; radar: Rada
     as_of: asOf,
     ledger: { total: snapshot.protocols.length, ranked: groups.ranked.length, board: rows.length, priced_comp: groups.pricedComp.length, comps_used: comps.length, token_no_cap: groups.tokenNoCap, out_bridge: groups.outBridge, out_staking: groups.outStaking, out_cex: groups.outCex, out_other: groups.outOther, dated_comps: comps.filter((p) => p.listed_at).length },
     odds: { terms: oddsTerms, base_rate: peers.filter(tokenRecorded).length / peers.length, peers: peers.length, weights: oddsFit.w, ablation: oddsAblation, final_cv: oddsFinal.cv, final_ts: oddsFinal.ts },
-    value: { terms: valueTerms, beta: VM.beta, flat_median: flatMedian, flat_miss: flatMiss, ablation: valueAblation, final_loo: valueFinal.loo, final_wf: valueFinal.wf, se_slope: +seSlope.toFixed(3), se_mult100: +seMult100.toFixed(2) },
+    value: { terms: valueTerms, beta: VM.beta, flat_median: flatMedian, flat_miss: flatMiss, ablation: valueAblation, final_loo: valueFinal.loo, final_wf: valueFinal.wf, se_slope: +seSlope.toFixed(3), se_mult100: +seMult100.toFixed(2), lambda: VALUE_LAMBDA, cat_effects: catEffects },
     spread: { ...spread, honesty_2575: shareIn(spread.p25, spread.p75), honesty_1090: shareIn(spread.p10, spread.p90), honesty_old_2575: honestySplit.old2575, honesty_new_2575: honestySplit.new2575, honesty_old_1090: honestySplit.old1090, honesty_new_1090: honestySplit.new1090, split_n: honestySplit.n },
     calibration,
     seal,

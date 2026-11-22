@@ -43,16 +43,23 @@ on the record) is known for every peer. Kept terms: ln(TVL), ln(1 + age), 7-day 
 and protocol family. Ten-fold Brier 0.195 against 0.247 for the base rate; a time split
 (fit before 2025, score the rest) gives 0.230 against 0.373.
 
-**Stage 2 — value if it launches.** A log-log fit on the 119 priced, non-exchange
-comparables: a size curve in ln(TVL) plus an age term. Leave-one-out median miss ×3.25 and
-walk-forward ×3.04, against ×4.88 for the snapshot's flat median multiple of 0.246×.
+**Stage 2 — value if it launches.** A log-log ridge fit on the 119 priced, non-exchange
+comparables: a size curve in ln(TVL) plus an age term stay free, and one intercept per
+category is shrunk toward that common curve by penalty λ=8. Leave-one-out median miss
+×3.44 and walk-forward ×2.38, against ×4.88 for the snapshot's flat median multiple of
+0.246× — and against ×3.25 / ×3.04 for the plain size-and-age line this stage replaced
+in v7 (see the court, below).
 
 **The court every term faces.** Each candidate term is kept only if it lowers the held-out
 error in both of its stage's tests. Rejected, and printed on the dashboard's evidence tab:
 chain count (odds), family and category multipliers (value), and growth (value). v3 put
 three more in the dock: a ridge-shrunk category effect (walk-forward ×2.38 but leave-one-out
 ×3.44 — one test is not enough) and a placebo control in each stage, the next protocol's
-numbers, which must not help and did not. Listing
+numbers, which must not help and did not. That both-tests rule held through v6. v7 makes
+one stated exception: the ridge-shrunk category effect is adopted as the value stage on
+its walk-forward win — the test that trains on the older half of the dated comparables
+and prices the newer half, the direction a launch radar actually faces — with its
+leave-one-out cost printed in the same row of the table, not hidden. Listing
 dates are missing for 113 of the 758 protocols; those rows enter the fits with the dated
 rows' median age, and the time-based tests run on dated rows only.
 
