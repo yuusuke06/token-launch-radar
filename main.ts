@@ -11,6 +11,17 @@
 //
 // Outside the grader's container, MAKEFUN_OUTPUT_DIR stands in for /output:
 //   mkdir -p out && MAKEFUN_OUTPUT_DIR=out node main.ts --input ../input/snapshot.json
+//
+// v8 note: this build differs from v6 in exactly one input — the
+// farm-verdict bar inside lib/model.ts (net >= $100 and >= $15 per
+// hour of attention, up from $50 and $8), which moves the default
+// scenario's verdicts from FARM 52 / MARGINAL 124 / SKIP 24 to
+// FARM 20 / MARGINAL 156 / SKIP 24. The model, the ranks, the
+// implied values and the board seal are unchanged. Three
+// standalone tools under tools/ re-derive the shipped figures
+// without importing this build: court-report.mjs (the whole
+// ablation court), verdict-sweep.mjs (the bar grid) and
+// stability-report.mjs (rank ranges and the time split).
 
 import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';

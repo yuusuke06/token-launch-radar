@@ -82,5 +82,7 @@ Two standalone analysis tools ship with this version:
 stages, the ridge grid, the placebos, calibration, bootstrap
 errors, range honesty) from the snapshot and prints it as a
 report; `tools/verdict-sweep.mjs` prints the verdict counts
-across the bar grid the v8 choice was made from. Both exit
+across the bar grid the v8 choice was made from; and
+`tools/stability-report.mjs` re-derives the bootstrap rank
+ranges and the time-split stability counts. All three exit
 non-zero if their figures disagree with the published ones.

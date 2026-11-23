@@ -276,9 +276,9 @@ build's model (`lib/model.ts`) and the page's own recompute
 
 ## 13. The standalone analysis tools (v8)
 
-Two tools ship under `tools/`, independent of the build and of
-each other, so the printed numbers can be re-derived a third
-and a fourth way:
+Three tools ship under `tools/`, independent of the build and
+of each other, so the printed numbers can be re-derived again
+independently (the third is §14):
 
 - **`tools/court-report.mjs`** fits both stages from the raw
   snapshot in its own implementation and prints the whole
@@ -307,3 +307,22 @@ and a fourth way:
 Neither tool is imported by the build; the dossier they check
 is produced without them, which is what makes their agreement
 worth anything.
+
+## 14. The stability report (v8)
+
+`tools/stability-report.mjs` re-derives the board's two softest
+numbers in a third implementation: the bootstrap rank ranges
+(150 value-stage refits on the build's seeded generator) and
+the time-split stability counts (both stages refitted on the
+past only — odds on peers listed before 2025, value on the
+older half of the dated comparables). Run against the sealed
+snapshot with `--data` pointing at a built `data.js`, it
+reproduces the shipped figures exactly: rank 1 unchanged, 33
+of the top 40 surviving, median absolute rank shift 11, and
+all 200 printed rank ranges matching the re-derived ones. It
+also names the seven top-40 rows the past-only model drops
+(R25 falls furthest among the near misses, to #41; Theo
+Network thUSD drops to #75) and the ten widest rank ranges on
+the board — Katana DEX at #137 spans ranks 96–167, which is
+the honest uncertainty a ×3.25 leave-one-out miss buys in the
+middle of the table. It exits non-zero on any disagreement.
