@@ -276,9 +276,10 @@ build's model (`lib/model.ts`) and the page's own recompute
 
 ## 13. The standalone analysis tools (v8)
 
-Three tools ship under `tools/`, independent of the build and
+Five tools ship under `tools/`, independent of the build and
 of each other, so the printed numbers can be re-derived again
-independently (the third is §14):
+independently (the third is §14, the fourth and fifth print
+the farm plans and the watchlist dossier):
 
 - **`tools/court-report.mjs`** fits both stages from the raw
   snapshot in its own implementation and prints the whole
@@ -304,9 +305,9 @@ independently (the third is §14):
   $18.0/hour). It exits non-zero if any of the four published
   counts moves.
 
-Neither tool is imported by the build; the dossier they check
-is produced without them, which is what makes their agreement
-worth anything.
+None of the tools is imported by the build; the dossier they
+check is produced without them, which is what makes their
+agreement worth anything.
 
 ## 14. The stability report (v8)
 
