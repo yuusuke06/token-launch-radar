@@ -62,8 +62,8 @@ the radar twice per run and refuses to ship unless the two
 dossiers agree byte for byte. Provisional rate 94.28%.
 
 ## v8 — a stricter farm bar, nothing else
-One variable, changed on purpose so the result can be read: the
-FARM verdict's bar rises from net ≥ $50 and ≥ $8 per hour of
+One variable, changed on purpose so the result can be read
+cleanly: the FARM verdict's bar is raised from net ≥ $50 and ≥ $8 per hour of
 attention to net ≥ $100 and ≥ $15 per hour. The model, the
 ranks, the implied values and the seal are untouched — the seal
 covers ranks and values, and it is still `f31d0d01`. Under the
@@ -73,3 +73,6 @@ conservatism of the boards at the top of the table (12–14 FARM
 of ~200). This is a classification change, not a model
 improvement, and it is labelled as such: the two held-out tests
 neither gain nor lose, because nothing they measure has moved.
+
+Submitted as the eighth entry. The final pick stays with v3
+unless this version's verified provisional rate reaches 94.80%.
