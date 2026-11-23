@@ -1,4 +1,4 @@
-// Launch Radar v6: a token-radar-01 entry (Node 22, standard library only).
+// Launch Radar v8: a token-radar-01 entry (Node 22, standard library only).
 //
 // Reads the sealed snapshot, fits the two-stage model in lib/model.ts on
 // the snapshot's own protocols (launch odds from the peer record, launch
@@ -35,7 +35,7 @@ function arg(name: string, fallback: string): string {
 const inputArg = arg('input', '/input');
 const inputFile = inputArg.endsWith('.json') ? inputArg : join(inputArg, 'snapshot.json');
 if (!existsSync(inputFile)) {
-  process.stderr.write(`launch radar v6: no snapshot at ${inputFile}: pass --input <snapshot.json|directory> or mount the sealed /input\n`);
+  process.stderr.write(`launch radar v8: no snapshot at ${inputFile}: pass --input <snapshot.json|directory> or mount the sealed /input\n`);
   process.exit(2);
 }
 const out = arg('output', process.env.MAKEFUN_OUTPUT_DIR ?? '/output');
@@ -51,7 +51,7 @@ const buildStarted = Date.now();
 const { board, radar } = buildRadar(snapshot);
 const issue = boardIssue(board, snapshot);
 if (issue !== null) {
-  process.stderr.write(`launch radar v6: the model wrote a board the gate refuses: ${issue}\n`);
+  process.stderr.write(`launch radar v8: the model wrote a board the gate refuses: ${issue}\n`);
   process.exit(1);
 }
 // Double-entry audit: lib/audit.ts re-derives the whole board from
@@ -59,10 +59,10 @@ if (issue !== null) {
 // reproduce itself does not ship.
 const audit = auditBoard(snapshot, radar);
 if (audit.ranks_identical !== audit.rows_checked) {
-  process.stderr.write(`launch radar v6: audit failed — the second path reproduces ${audit.ranks_identical} of ${audit.rows_checked} ranks\n`);
+  process.stderr.write(`launch radar v8: audit failed — the second path reproduces ${audit.ranks_identical} of ${audit.rows_checked} ranks\n`);
   process.exit(1);
 }
-process.stdout.write(`launch radar v6: audit passed — ${audit.ranks_identical} of ${audit.rows_checked} ranks reproduced by the second path, largest implied drift ${(audit.max_drift * 100).toFixed(3)}%, watchlist ${audit.watchlist_covered} of ${snapshot.watchlist.length}\n`);
+process.stdout.write(`launch radar v8: audit passed — ${audit.ranks_identical} of ${audit.rows_checked} ranks reproduced by the second path, largest implied drift ${(audit.max_drift * 100).toFixed(3)}%, watchlist ${audit.watchlist_covered} of ${snapshot.watchlist.length}\n`);
 // The same second path re-derives the court's four headline
 // scores — the numbers the dashboard's first screen leads with.
 // A disagreement past float noise means one of the two
@@ -70,20 +70,20 @@ process.stdout.write(`launch radar v6: audit passed — ${audit.ranks_identical}
 const court = auditCourt(snapshot, radar);
 const courtWorst = Math.max(court.cv_diff, court.ts_diff, court.loo_diff, court.wf_diff);
 if (courtWorst > 0.01) {
-  process.stderr.write(`launch radar v6: court audit failed — headline scores disagree with the second path (worst difference ${courtWorst.toFixed(4)})\n`);
+  process.stderr.write(`launch radar v8: court audit failed — headline scores disagree with the second path (worst difference ${courtWorst.toFixed(4)})\n`);
   process.exit(1);
 }
-process.stdout.write(`launch radar v6: court audit passed — ten-fold Brier ${court.cv.toFixed(3)}, time split ${court.ts.toFixed(3)}, leave-one-out x${court.loo.toFixed(2)}, walk-forward x${court.wf.toFixed(2)}, all re-derived by the second path\n`);
+process.stdout.write(`launch radar v8: court audit passed — ten-fold Brier ${court.cv.toFixed(3)}, time split ${court.ts.toFixed(3)}, leave-one-out x${court.loo.toFixed(2)}, walk-forward x${court.wf.toFixed(2)}, all re-derived by the second path\n`);
 // Determinism, proven rather than claimed: build the whole radar
 // a second time and require the two results to be identical,
 // byte for byte, before anything is written. The dossier the
 // grader re-runs must equal the dossier it graded.
 const second = buildRadar(snapshot);
 if (JSON.stringify(second) !== JSON.stringify({ board, radar })) {
-  process.stderr.write('launch radar v6: determinism check failed — two builds of the same snapshot disagree\n');
+  process.stderr.write('launch radar v8: determinism check failed — two builds of the same snapshot disagree\n');
   process.exit(1);
 }
-process.stdout.write(`launch radar v6: determinism check passed — two full builds agree byte for byte; build wall time ${((Date.now() - buildStarted) / 1000).toFixed(1)}s of the grader's 120s budget (two builds plus both audits)\n`);
+process.stdout.write(`launch radar v8: determinism check passed — two full builds agree byte for byte; build wall time ${((Date.now() - buildStarted) / 1000).toFixed(1)}s of the grader's 120s budget (two builds plus both audits)\n`);
 
 mkdirSync(out, { recursive: true });
 writeFileSync(join(out, 'board.json'), `${JSON.stringify({ rows: board })}\n`);
@@ -110,12 +110,12 @@ function copyFiles(from: string, to: string): string[] {
 const pageFiles = copyFiles(join(here, 'dashboard'), join(out, 'dashboard'));
 const shots = copyFiles(join(here, 'screenshots'), join(out, 'screenshots'));
 if (shots.length < 3) {
-  process.stderr.write(`launch radar v6: screenshots/ holds ${shots.length} image${shots.length === 1 ? '' : 's'}: hand in 3, the board, the evidence and a detail view\n`);
+  process.stderr.write(`launch radar v8: screenshots/ holds ${shots.length} image${shots.length === 1 ? '' : 's'}: hand in 3, the board, the evidence and a detail view\n`);
   process.exit(1);
 }
 for (const name of shots) {
   if (!IMAGE_NAME.test(name)) {
-    process.stderr.write(`launch radar v6: screenshots/${name}: a name is letters, digits and . _ -, 1 to 128 characters\n`);
+    process.stderr.write(`launch radar v8: screenshots/${name}: a name is letters, digits and . _ -, 1 to 128 characters\n`);
     process.exit(1);
   }
 }
@@ -123,7 +123,7 @@ for (const name of shots) {
 writeFileSync(join(out, 'dossier.json'), buildDossier(out, { text_max_bytes: TEXT_MAX_BYTES, screenshots: SCREENSHOT_CAPS, dashboard: { max_files: 400, max_bytes: 4_194_304 } }));
 
 process.stdout.write(
-  `launch radar v6: ${snapshot.protocols.length} protocols, ${snapshot.watchlist.length} on the watchlist, ${board.length} rows ranked, all ${snapshot.watchlist.length} watchlist slugs covered\n` +
-    `launch radar v6: odds terms [${radar.odds.terms.join(', ')}], ten-fold Brier ${radar.odds.final_cv.toFixed(3)} against a ${radar.odds.base_rate.toFixed(3)} base rate; value terms [${radar.value.terms.join(', ')}], leave-one-out miss x${radar.value.final_loo.toFixed(2)} against x${radar.value.flat_miss.toFixed(2)} for the flat multiple\n` +
-    `launch radar v6: verdicts ${JSON.stringify(radar.verdicts)}; wrote board.json, data.js, dashboard (${pageFiles.length} files), screenshots (${shots.length} images) and dossier.json\n`,
+  `launch radar v8: ${snapshot.protocols.length} protocols, ${snapshot.watchlist.length} on the watchlist, ${board.length} rows ranked, all ${snapshot.watchlist.length} watchlist slugs covered\n` +
+    `launch radar v8: odds terms [${radar.odds.terms.join(', ')}], ten-fold Brier ${radar.odds.final_cv.toFixed(3)} against a ${radar.odds.base_rate.toFixed(3)} base rate; value terms [${radar.value.terms.join(', ')}], leave-one-out miss x${radar.value.final_loo.toFixed(2)} against x${radar.value.flat_miss.toFixed(2)} for the flat multiple\n` +
+    `launch radar v8: verdicts ${JSON.stringify(radar.verdicts)}; wrote board.json, data.js, dashboard (${pageFiles.length} files), screenshots (${shots.length} images) and dossier.json\n`,
 );

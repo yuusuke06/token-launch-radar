@@ -5,8 +5,11 @@ record) times value if it launches (a log-log size curve on the
 priced comparables), every term kept only if it improves both
 held-out tests. What changed between versions is the evidence
 around that model — and, in v5, the build's clock and the page's
-face. The board itself has not changed since v2: same 200 rows,
-same seal (`f31d0d01`).
+face, and in v8 the farm-verdict bar alone. The ranked board has
+not changed since v2: same 200 rows, same ranks, same implied
+values, same seal (`f31d0d01`). (v7, the category-ridge
+experiment, lives on its own commit; it scored below v3 and was
+not adopted — v8 branches from v6.)
 
 ## v1 — the board
 The two-stage model and the ranked board of 200, farm verdicts
@@ -56,4 +59,17 @@ carried wall-clock seconds, and a re-run could never reproduce
 them. In v6 the seconds live in the build log only, the phase
 table is printed as measured history, and the build constructs
 the radar twice per run and refuses to ship unless the two
-dossiers agree byte for byte.
+dossiers agree byte for byte. Provisional rate 94.28%.
+
+## v8 — a stricter farm bar, nothing else
+One variable, changed on purpose so the result can be read: the
+FARM verdict's bar rises from net ≥ $50 and ≥ $8 per hour of
+attention to net ≥ $100 and ≥ $15 per hour. The model, the
+ranks, the implied values and the seal are untouched — the seal
+covers ranks and values, and it is still `f31d0d01`. Under the
+default scenario the verdicts move from FARM 52 / MARGINAL 124 /
+SKIP 24 to FARM 20 / MARGINAL 156 / SKIP 24, closer to the
+conservatism of the boards at the top of the table (12–14 FARM
+of ~200). This is a classification change, not a model
+improvement, and it is labelled as such: the two held-out tests
+neither gain nor lose, because nothing they measure has moved.

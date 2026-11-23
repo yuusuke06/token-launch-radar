@@ -1,4 +1,4 @@
-// Launch Radar v6 dashboard. Renders the board written by main.ts
+// Launch Radar v8 dashboard. Renders the board written by main.ts
 // (window.RADAR in ../data.js), re-derives every verdict live under the
 // reader's scenario, and recomputes the board's own totals on the page
 // as a check that the table and the model agree.
@@ -19,7 +19,7 @@ function econ(row) {
   const net = expected - fees;
   const hours = 2 + row.chains.length * 0.5 + scen.horizon * 0.25;
   const netPerHour = net / hours;
-  return { deposit, expected, fees, net, hours, netPerHour, verdict: net >= 50 && netPerHour >= 8 ? 'FARM' : net > 0 ? 'MARGINAL' : 'SKIP' };
+  return { deposit, expected, fees, net, hours, netPerHour, verdict: net >= 100 && netPerHour >= 15 ? 'FARM' : net > 0 ? 'MARGINAL' : 'SKIP' };
 }
 
 // The in-page refit lives in refit.js (loaded before this file);
@@ -132,7 +132,7 @@ function methodView() {
   <dt>Token odds</dt><dd>Logistic fit on ${R.odds.peers} peers with terms [${R.odds.terms.join(', ')}], regularised, fitted at build time on the snapshot itself. Outcome: a token symbol or Gecko id on the protocol's record. Young protocols are censored — some will record tokens later — so the odds are read as the peers' record to date, and the time split is reported beside the ten-fold score.</dd>
   <dt>Value if it launches</dt><dd>Log-log fit on ${R.ledger.comps_used} priced comparables with terms [size curve${R.value.terms.length ? ', ' + R.value.terms.join(', ') : ''}]. No external prices, no hand-set multiples: the flat ${R.value.flat_median.toFixed(3)}× median is the baseline the fit has to beat, and it beats it in both tests.</dd>
   <dt>Ranges</dt><dd>P25–P75 per row is the value range implied by the leave-one-out residual quantiles (×${R.spread.p25.toFixed(2)} to ×${R.spread.p75.toFixed(2)}). Rank ranges are the interquartile ranks over 150 bootstrap refits of the value stage with the odds held fixed.</dd>
-  <dt>Farm economics</dt><dd>Scenario, adjustable on the board: the drop is ${scen.drop}% of implied value shared pro-rata across all deposits; the plan deposit is ${scen.planPct}% of TVL (min $500, max $100,000); the only cost charged is gas at $2.57 per transaction, since the deposit earns the protocol's base yield. Verdicts: FARM needs net ≥ $50 and ≥ $8 per hour of attention over a ${scen.horizon}-week horizon; MARGINAL is any positive net; the rest are SKIP.</dd>
+  <dt>Farm economics</dt><dd>Scenario, adjustable on the board: the drop is ${scen.drop}% of implied value shared pro-rata across all deposits; the plan deposit is ${scen.planPct}% of TVL (min $500, max $100,000); the only cost charged is gas at $2.57 per transaction, since the deposit earns the protocol's base yield. Verdicts: FARM needs net ≥ $100 and ≥ $15 per hour of attention over a ${scen.horizon}-week horizon; MARGINAL is any positive net; the rest are SKIP.</dd>
   <dt>Limits</dt><dd>DefiLlama's record is not proof: a protocol listed as pre-token may have a token the record does not carry. Listing dates are missing for 113 of ${R.ledger.total} protocols. The snapshot is one day (${esc(R.as_of)}); nothing here is live.</dd>
   <dt>Reproducibility</dt><dd>main.ts refits both stages from the sealed snapshot on every run — in about ten seconds, inside the grader's 120-second budget, with the phase timings printed as history on the Evidence tab — and writes board.json; this page recomputes the board's ranks and totals from that same data and prints the checks above the board, including a seal — a hash of the board's rows — recomputed here and compared with the build's copy. Stronger still: the page ships the raw snapshot and refits both stages itself, in the reader's browser, then diffs its own board against the build's (the refit line in the checks above). The one thing the in-page refit does not redo is the ablation court — that stays in the build, with its tables on the Evidence tab.</dd>
   <dt>Refused terms</dt><dd>Three additions faced the same court as the kept terms and failed it: a ridge-shrunk category effect (the formulation several rivals ship) improves the walk-forward to ×${R.value.ablation.find((a) => a.term.includes('ridge')).test2.toFixed(2)} but worsens leave-one-out, and a placebo control in each stage — the next protocol's numbers, which cannot cause this protocol's outcome — helps neither test, as it must not. All three rows are printed in the ablation tables.</dd>

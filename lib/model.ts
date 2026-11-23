@@ -280,7 +280,7 @@ export function farmEconomics(implied: number, tvl: number, chainCount: number):
   const net = expected - fees;
   const hours = 2 + chainCount * 0.5 + 3;
   const netPerHour = net / hours;
-  return { deposit, expected, fees, net, hours, netPerHour, verdict: net >= 50 && netPerHour >= 8 ? 'FARM' : net > 0 ? 'MARGINAL' : 'SKIP' };
+  return { deposit, expected, fees, net, hours, netPerHour, verdict: net >= 100 && netPerHour >= 15 ? 'FARM' : net > 0 ? 'MARGINAL' : 'SKIP' };
 }
 
 const ACTION: Record<string, string> = {

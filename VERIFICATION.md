@@ -251,3 +251,25 @@ The correction is a separation, kept from here on:
   dossier unless the two results are identical, byte for byte.
   A future change that smuggles variance into the data will fail
   here, in the build, before it can fail at grading.
+
+## 12. The farm bar (v8)
+
+v8 changes exactly one thing: the FARM verdict's threshold, from
+net ≥ $50 and ≥ $8 per hour of attention to net ≥ $100 and
+≥ $15 per hour, in both places the verdict is derived — the
+build's model (`lib/model.ts`) and the page's own recompute
+(`dashboard/app.js`) — with the Method text updated to match.
+
+- **What did not move.** The board audit still reproduces 200 of
+  200 ranks with a largest implied drift of 0.003%; the court
+  audit still re-derives Brier 0.195, time split 0.230,
+  leave-one-out ×3.25 and walk-forward ×3.04; the seal is still
+  `f31d0d01`, because it covers ranks and values and neither
+  changed.
+- **What moved.** Default-scenario verdicts: FARM 52 → 20,
+  MARGINAL 124 → 156, SKIP 24 → 24. The counts are printed by
+  the build log on every run and re-derived live by the page
+  from the same thresholds.
+- **Determinism and budget, unchanged.** The build still
+  constructs the radar twice and refuses to ship on any byte
+  difference; the full gate ran in ~20s of the 120s budget.

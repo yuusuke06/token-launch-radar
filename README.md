@@ -62,8 +62,9 @@ range. Rank ranges are interquartile ranks over 150 bootstrap refits of the valu
 
 **Farm economics.** Under the page's default scenario the drop is 5% of implied value shared
 pro-rata across all deposits, the plan deposit is 0.02% of TVL (min $500, max $100,000), and
-gas at $2.57 per transaction is the only cost charged. Verdicts: FARM 52, MARGINAL 124,
-SKIP 24 — and they move with the scenario sliders, which re-derive every verdict live.
+gas at $2.57 per transaction is the only cost charged. Verdicts: FARM 20, MARGINAL 156,
+SKIP 24 — the FARM bar stands at net ≥ $100 and ≥ $15 per hour of attention (raised in
+v8; see the changelog) — and they move with the scenario sliders, which re-derive every verdict live.
 
 ## Where each claim is checked
 
