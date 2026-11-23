@@ -79,6 +79,7 @@ v8; see the changelog) — and they move with the scenario sliders, which re-der
 | Ledger, watchlist coverage, board rules, seal | `node verify/verify-build.mjs <dossier-dir>` — fresh code, shipped artifacts only, 22 checks |
 | The build fits its time budget, deterministically | the build's clock prints to its log (v4 was rejected at ~113s of 120s; the fixed build runs in ~10s), the dossier carries no run-varying field (v5 was rejected for carrying one), and the build constructs the radar twice per run and refuses to ship if the two dossiers differ |
 | The court's four headline scores | the build's second path (`auditCourt` in `lib/audit.ts`) re-derives the kept terms' ten-fold Brier, time split, leave-one-out and walk-forward; the build refuses to ship past a 0.01 disagreement |
+| The whole court, the ridge grid and the verdict sweep | `node tools/court-report.mjs --input <snapshot>` and `node tools/verdict-sweep.mjs --input <snapshot>` — standalone re-implementations that print every figure and exit non-zero on disagreement (VERIFICATION.md §13) |
 | Term selection (the ablation trials themselves) | not re-derived — the full tables are printed on the Evidence tab, and the snapshot ships with the page for anyone to re-run them |
 
 ## Running it

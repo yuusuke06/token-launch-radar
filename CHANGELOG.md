@@ -76,3 +76,11 @@ neither gain nor lose, because nothing they measure has moved.
 
 Submitted as the eighth entry. The final pick stays with v3
 unless this version's verified provisional rate reaches 94.80%.
+
+Two standalone analysis tools ship with this version:
+`tools/court-report.mjs` re-derives the whole court (both
+stages, the ridge grid, the placebos, calibration, bootstrap
+errors, range honesty) from the snapshot and prints it as a
+report; `tools/verdict-sweep.mjs` prints the verdict counts
+across the bar grid the v8 choice was made from. Both exit
+non-zero if their figures disagree with the published ones.

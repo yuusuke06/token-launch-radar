@@ -273,3 +273,37 @@ build's model (`lib/model.ts`) and the page's own recompute
 - **Determinism and budget, unchanged.** The build still
   constructs the radar twice and refuses to ship on any byte
   difference; the full gate ran in ~20s of the 120s budget.
+
+## 13. The standalone analysis tools (v8)
+
+Two tools ship under `tools/`, independent of the build and of
+each other, so the printed numbers can be re-derived a third
+and a fourth way:
+
+- **`tools/court-report.mjs`** fits both stages from the raw
+  snapshot in its own implementation and prints the whole
+  court: the odds ablation (ten-fold Brier and time split for
+  every candidate term, the placebo included), the calibration
+  bins, the value ablation (leave-one-out and walk-forward),
+  the ridge penalty grid {4…256} the category formulation was
+  judged on, the bootstrap coefficient errors, the split-half
+  range honesty, and the board's verdict counts. Run against
+  the sealed snapshot it reproduces the published figures
+  exactly — Brier 0.195, time split 0.230, leave-one-out
+  ×3.25, walk-forward ×3.04, honesty 51.3% / 81.5% pooled
+  (62.8% / 52.3% and 88.4% / 81.8% by listing half) — and it
+  exits non-zero if its headline figures ever disagree with
+  the published ones.
+- **`tools/verdict-sweep.mjs`** rebuilds the board and prints
+  the verdict counts across the bar grid the v8 choice was
+  made from: FARM 52 at the old $50 / $8-per-hour bar, 20 at
+  the shipped $100 / $15 bar, 3 at $150 / $20, 1 at $200 /
+  $25 — plus the five protocols that came closest to the
+  shipped bar without clearing it (Figure Markets Exchange
+  misses on net alone: $99 against the $100 line, at
+  $18.0/hour). It exits non-zero if any of the four published
+  counts moves.
+
+Neither tool is imported by the build; the dossier they check
+is produced without them, which is what makes their agreement
+worth anything.
